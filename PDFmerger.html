@@ -104,13 +104,14 @@
         }
         .modal-overlay.active { display: flex; }
         
-        /* 預覽視窗標題列 */
         .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; }
         .header-actions { display: flex; align-items: center; gap: 12px; }
+        
+        /* 🌟 分享按鈕樣式 (永遠顯示) */
         .btn-share {
             background-color: #3498DB; color: white; border: none; padding: 8px 14px;
             border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: 0.2s;
-            display: none; /* 預設隱藏，若瀏覽器支援才顯示 */
+            display: none; 
         }
         .btn-share:hover { background-color: #2980B9; }
         .btn-close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
@@ -118,7 +119,7 @@
         .preview-content { 
             flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: center; overflow: auto; 
         }
-        .preview-content iframe { width: 100%; height: 100%; background: white; border-radius: 8px; }
+        .preview-content iframe { width: 100%; height: 100%; background: white; border-radius: 8px; border: none; }
         .preview-content img { 
             max-width: 100%; max-height: 100%; object-fit: contain; background: white; 
             border-radius: 8px; cursor: zoom-in; transition: 0.2s;
@@ -169,8 +170,8 @@
         <div class="preview-header">
             <h3 id="preview-title">檔案預覽</h3>
             <div class="header-actions">
-                <!-- 🌟 手機專用：呼叫原生分享選單存至 Google Drive -->
-                <button class="btn-share" id="btn-share-pdf">📤 傳送/存至雲端</button>
+                <!-- 🌟 傳送/下載按鈕 -->
+                <button class="btn-share" id="btn-share-pdf">📤 傳送 / 儲存</button>
                 <button class="btn-close-modal" id="btn-close-preview">✕</button>
             </div>
         </div>
@@ -178,6 +179,38 @@
     </div>
 
     <script>
+        // --- 🌟 攔截「手機返回鍵」的黑魔法 (History API) ---
+        let isModalOpen = false;
+
+        function showModal() {
+            document.getElementById('preview-modal').classList.add('active');
+            isModalOpen = true;
+            // 偷偷推入一個假的歷史紀錄
+            history.pushState({ modal: 'open' }, '');
+        }
+
+        function closeModal() {
+            document.getElementById('preview-modal').classList.remove('active');
+            document.getElementById('preview-content').innerHTML = '';
+            isModalOpen = false;
+        }
+
+        // 監聽手機實體返回鍵或瀏覽器的上一頁
+        window.addEventListener('popstate', (e) => {
+            if (isModalOpen) {
+                closeModal(); // 只關閉視窗，不離開網頁！
+            }
+        });
+
+        // 如果是手動按叉叉關閉，我們要幫瀏覽器「退回」那個假的歷史紀錄，保持乾淨
+        document.getElementById('btn-close-preview').addEventListener('click', () => {
+            if (isModalOpen) {
+                history.back(); // 觸發 popstate 來關閉
+            }
+        });
+
+        // ----------------------------------------------------
+
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             let added = false;
@@ -203,7 +236,7 @@
         });
 
         let files = []; let previewObjectURL = null;
-        let finalMergedPdfFile = null; // 🌟 用來暫存最後合併好的 PDF 檔案給分享按鈕使用
+        let finalMergedPdfFile = null; 
         
         const fileListElement = document.getElementById('file-list');
         const mergeBtn = document.getElementById('merge-btn');
@@ -289,7 +322,7 @@
             if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
             previewObjectURL = URL.createObjectURL(file);
             
-            // 單一檔案預覽時隱藏分享按鈕
+            // 單一檔案預覽時不顯示合併分享按鈕
             btnSharePdf.style.display = 'none'; 
 
             if (file.type === 'application/pdf') {
@@ -298,23 +331,29 @@
                 const img = document.createElement('img'); img.src = previewObjectURL; 
                 img.onclick = () => { img.classList.toggle('zoomed'); }; contentDiv.appendChild(img);
             }
-            document.getElementById('preview-modal').classList.add('active');
+            showModal(); // 🌟 呼叫防跳走的新函數
         }
 
-        document.getElementById('btn-close-preview').addEventListener('click', () => {
-            document.getElementById('preview-modal').classList.remove('active');
-            document.getElementById('preview-content').innerHTML = '';
-        });
-
-        // 🌟 分享按鈕事件 (手機端原生選單)
+        // 🌟 分享按鈕事件：若手機支援就分享檔案，不支援(如桌機)就觸發下載
         btnSharePdf.addEventListener('click', async () => {
             if (!finalMergedPdfFile) return;
             try {
-                await navigator.share({
-                    files: [finalMergedPdfFile],
-                    title: finalMergedPdfFile.name,
-                    text: '這是我剛處理好的 PDF 文件'
-                });
+                if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
+                    await navigator.share({
+                        files: [finalMergedPdfFile],
+                        title: finalMergedPdfFile.name,
+                        text: '這是我剛處理好的 PDF 文件'
+                    });
+                } else {
+                    // 桌機瀏覽器退回方案：直接觸發下載
+                    const u = URL.createObjectURL(finalMergedPdfFile);
+                    const a = document.createElement('a');
+                    a.href = u; a.download = finalMergedPdfFile.name;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    URL.revokeObjectURL(u);
+                    updateStatus('📥 設備不支援系統分享選單，已為您自動下載檔案！', true);
+                    setTimeout(()=>updateStatus('',false), 3000);
+                }
             } catch (error) {
                 console.log('分享取消或不支援', error);
             }
@@ -325,9 +364,13 @@
         mergeBtn.addEventListener('click', async () => {
             let defaultName = document.getElementById('output-filename').value.trim() || '合併完成';
             if (!defaultName.toLowerCase().endsWith('.pdf')) defaultName += '.pdf';
+            
+            // 手機版不需要強制跳出視窗選路徑，直接在背景處理
             let fileHandle = null;
-            try { if (window.showSaveFilePicker) fileHandle = await window.showSaveFilePicker({ suggestedName: defaultName, types: [{ description: 'PDF', accept: {'application/pdf': ['.pdf']} }] }); } 
-            catch (err) { if (err.name === 'AbortError') return; }
+            if (window.showSaveFilePicker) {
+                try { fileHandle = await window.showSaveFilePicker({ suggestedName: defaultName, types: [{ description: 'PDF', accept: {'application/pdf': ['.pdf']} }] }); } 
+                catch (err) { if (err.name === 'AbortError') return; }
+            }
 
             mergeBtn.disabled = true; updateStatus('啟動轉換引擎...');
             try {
@@ -357,15 +400,16 @@
                 }
                 updateStatus('正在寫入檔案...'); const mergedBytes = await mergedPdf.save();
                 
-                // 桌機：正常儲存或下載
+                // 桌機處理：寫入檔案
                 if (fileHandle) {
                     const w = await fileHandle.createWritable(); await w.write(mergedBytes); await w.close();
-                } else {
+                } else if (!navigator.canShare) {
+                    // 若不支援 Web Share API，才走傳統下載方式
                     const u = URL.createObjectURL(new Blob([mergedBytes], {type:'application/pdf'})), a = document.createElement('a');
                     a.href = u; a.download = defaultName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
                 }
 
-                // 準備預覽與手機端分享功能
+                // 準備預覽與分享功能
                 const blob = new Blob([mergedBytes], { type: 'application/pdf' });
                 finalMergedPdfFile = new File([blob], defaultName, { type: 'application/pdf' });
 
@@ -374,19 +418,17 @@
 
                 document.getElementById('preview-title').textContent = `成果：${defaultName}`;
                 
-                // 🌟 檢查手機是否支援 Web Share API，若支援則顯示「分享/存至雲端」按鈕
-                if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
-                    btnSharePdf.style.display = 'block';
-                }
+                // 🌟 永遠顯示傳送/儲存按鈕
+                btnSharePdf.style.display = 'block';
 
                 const contentDiv = document.getElementById('preview-content');
                 contentDiv.innerHTML = '';
                 const iframe = document.createElement('iframe');
                 iframe.src = previewObjectURL;
                 contentDiv.appendChild(iframe);
-                document.getElementById('preview-modal').classList.add('active');
+                showModal(); // 🌟 呼叫防跳走的新函數
 
-                updateStatus('✅ 合併成功！已自動儲存並開啟預覽。'); 
+                updateStatus('✅ 合併成功！請利用上方按鈕傳送或儲存。'); 
                 setTimeout(()=>updateStatus('',false), 3000);
             } catch (err) { 
                 console.error(err);
