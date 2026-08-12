@@ -89,7 +89,6 @@
         }
         .settings-group input { flex-grow: 1; padding: 8px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); outline: none; }
 
-        /* 主按鈕樣式 */
         .btn-main {
             width: 100%; padding: 16px; font-size: 1.1rem; font-weight: 600; color: white;
             background-color: var(--primary); border: none; border-radius: var(--radius-md); cursor: pointer; transition: 0.2s;
@@ -98,7 +97,6 @@
         .btn-main:hover:not(:disabled) { background-color: var(--primary-hover); }
         .btn-main:disabled { background-color: #BCC9C1; cursor: not-allowed; }
 
-        /* 🌟 合併完成後的雙按鈕面板 */
         .post-merge-panel {
             display: none; flex-direction: row; gap: 12px; width: 100%; animation: fadeIn 0.3s ease;
         }
@@ -113,7 +111,6 @@
         #status-container { display: none; padding: 16px; border-radius: var(--radius-md); background: #E8EFEA; text-align: center; font-weight: 600; border: 1px dashed var(--primary); color: var(--primary);}
         #status-container.active { display: block; }
 
-        /* Modal 共用 */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
             background: rgba(0, 0, 0, 0.85); z-index: 1000; display: none; flex-direction: column;
@@ -168,10 +165,8 @@
             <input type="text" id="output-filename" value="合併完成文件">
         </div>
         
-        <!-- 原始的合併按鈕 -->
         <button class="btn-main" id="merge-btn" disabled>⚙️ 開始合併 PDF (背景處理)</button>
         
-        <!-- 🌟 合併完成後自動切換顯示的雙按鈕 -->
         <div class="post-merge-panel" id="post-merge-panel">
             <button class="btn-half" id="btn-show-preview">👁️ 預覽檔案</button>
             <button class="btn-half" id="btn-trigger-share">📤 傳送 / 儲存</button>
@@ -190,7 +185,6 @@
     </div>
 
     <script>
-        // --- 攔截「手機返回鍵」的黑魔法 (History API) ---
         let isModalOpen = false;
 
         function showModal() {
@@ -213,9 +207,6 @@
             if (isModalOpen) { history.back(); }
         });
 
-        // ----------------------------------------------------
-
-        // 🌟 重置合併按鈕狀態 (當使用者新增、刪除或排序檔案時觸發)
         function resetMergeUI() {
             document.getElementById('merge-btn').style.display = 'flex';
             document.getElementById('post-merge-panel').style.display = 'none';
@@ -249,8 +240,6 @@
 
         let files = []; 
         let previewObjectURL = null;
-        
-        // 存放合併後的記憶體檔案，供預覽和下載使用
         let finalMergedBlob = null; 
         let finalMergedPdfFile = null; 
         let finalDefaultName = '';
@@ -327,7 +316,7 @@
                 controls.append(upBtn, downBtn, previewBtn, removeBtn);
                 li.append(infoDiv, controls); fileListElement.appendChild(li);
             });
-            resetMergeUI(); // 檔案變動時，重置為開始合併按鈕
+            resetMergeUI();
         }
 
         function moveFile(idx, dir) { const n = idx + dir; if (n >= 0 && n < files.length) { const t = files[idx]; files[idx] = files[n]; files[n] = t; renderFileList(); } }
@@ -349,7 +338,7 @@
 
         function updateStatus(msg, active=true) { const c = document.getElementById('status-container'); c.textContent = msg; active ? c.classList.add('active') : c.classList.remove('active'); }
         
-        // --- 🌟 背景合併運算 ---
+        // --- 🌟 強化的合併防護裝甲 ---
         mergeBtn.addEventListener('click', async () => {
             finalDefaultName = document.getElementById('output-filename').value.trim() || '合併完成';
             if (!finalDefaultName.toLowerCase().endsWith('.pdf')) finalDefaultName += '.pdf';
@@ -358,50 +347,78 @@
             updateStatus('🚀 啟動引擎背景處理中...');
             
             try {
-                const { PDFDocument, PageSizes } = PDFLib; const mergedPdf = await PDFDocument.create(); const [a4W, a4H] = PageSizes.A4;
+                const { PDFDocument, PageSizes } = PDFLib; 
+                const mergedPdf = await PDFDocument.create(); 
+                const [a4W, a4H] = PageSizes.A4;
+                
                 for (let i = 0; i < files.length; i++) {
-                    const file = files[i]; const arrBuf = await file.arrayBuffer();
-                    if (file.type === 'application/pdf') {
-                        const pdfDoc = await pdfjsLib.getDocument({ data: arrBuf }).promise;
-                        for (let p = 1; p <= pdfDoc.numPages; p++) {
-                            updateStatus(`處理中：PDF ${i+1}/${files.length} (頁 ${p})...`);
-                            const page = await pdfDoc.getPage(p), vp = page.getViewport({scale: 2.0});
-                            const cvs = document.createElement('canvas'), ctx = cvs.getContext('2d');
-                            cvs.width = vp.width; cvs.height = vp.height; ctx.fillStyle='white'; ctx.fillRect(0,0,cvs.width,cvs.height);
-                            await page.render({canvasContext: ctx, viewport: vp}).promise;
-                            const img = await mergedPdf.embedJpg(cvs.toDataURL('image/jpeg', 0.95));
+                    const file = files[i]; 
+                    
+                    // 🔒 防護罩：用 try-catch 包覆單一檔案處理，壞掉的檔案直接跳過，不中斷整體流程
+                    try {
+                        const arrBuf = await file.arrayBuffer();
+                        if (file.type === 'application/pdf') {
+                            
+                            // 💡 修正亞洲字型：掛載 CMap 確保中文 PDF 不會顯示成全白
+                            const pdfDoc = await pdfjsLib.getDocument({ 
+                                data: arrBuf,
+                                cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+                                cMapPacked: true
+                            }).promise;
+                            
+                            for (let p = 1; p <= pdfDoc.numPages; p++) {
+                                updateStatus(`處理中：PDF ${i+1}/${files.length} (頁 ${p})...`);
+                                const page = await pdfDoc.getPage(p), vp = page.getViewport({scale: 2.0});
+                                const cvs = document.createElement('canvas'), ctx = cvs.getContext('2d');
+                                cvs.width = vp.width; cvs.height = vp.height; ctx.fillStyle='white'; ctx.fillRect(0,0,cvs.width,cvs.height);
+                                await page.render({canvasContext: ctx, viewport: vp}).promise;
+                                const img = await mergedPdf.embedJpg(cvs.toDataURL('image/jpeg', 0.95));
+                                const newP = mergedPdf.addPage([a4W, a4H]);
+                                const fS = Math.min(a4W/img.width, a4H/img.height);
+                                newP.drawImage(img, {x: (a4W - img.width*fS)/2, y: (a4H - img.height*fS)/2, width: img.width*fS, height: img.height*fS});
+                            }
+                            
+                            // 💡 記憶體管理：處理完立刻釋放，防止崩潰
+                            pdfDoc.destroy(); 
+
+                        } else {
+                            updateStatus(`處理中：圖片 ${i+1}/${files.length}...`);
+                            let img;
+                            
+                            // 💡 智能防呆：即使副檔名被亂改，依然能自動嘗試另一種格式強行解析
+                            try {
+                                img = file.type === 'image/jpeg' ? await mergedPdf.embedJpg(arrBuf) : await mergedPdf.embedPng(arrBuf);
+                            } catch (fallbackErr) {
+                                img = file.type === 'image/jpeg' ? await mergedPdf.embedPng(arrBuf) : await mergedPdf.embedJpg(arrBuf);
+                            }
+                            
                             const newP = mergedPdf.addPage([a4W, a4H]);
                             const fS = Math.min(a4W/img.width, a4H/img.height);
                             newP.drawImage(img, {x: (a4W - img.width*fS)/2, y: (a4H - img.height*fS)/2, width: img.width*fS, height: img.height*fS});
                         }
-                    } else {
-                        updateStatus(`處理中：圖片 ${i+1}/${files.length}...`);
-                        const img = file.type==='image/jpeg' ? await mergedPdf.embedJpg(arrBuf) : await mergedPdf.embedPng(arrBuf);
-                        const newP = mergedPdf.addPage([a4W, a4H]);
-                        const fS = Math.min(a4W/img.width, a4H/img.height);
-                        newP.drawImage(img, {x: (a4W - img.width*fS)/2, y: (a4H - img.height*fS)/2, width: img.width*fS, height: img.height*fS});
+                    } catch (fileErr) {
+                        console.error(`檔案 ${file.name} 處理失敗:`, fileErr);
+                        alert(`⚠️ 警告：檔案「${file.name}」格式異常或無法解析，系統已為您自動跳過。`);
                     }
                 }
+                
                 updateStatus('正在封裝檔案...'); 
                 const mergedBytes = await mergedPdf.save();
                 
-                // 產生記憶體檔案備用
                 finalMergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
                 finalMergedPdfFile = new File([finalMergedBlob], finalDefaultName, { type: 'application/pdf' });
 
-                // UI 切換：隱藏合併按鈕，顯示預覽與儲存按鈕
                 mergeBtn.style.display = 'none';
                 document.getElementById('post-merge-panel').style.display = 'flex';
                 updateStatus('✅ 合併完成！請選擇下一步：', true);
 
             } catch (err) { 
                 console.error(err);
-                updateStatus('❌ 發生錯誤，請重試。'); 
+                updateStatus('❌ 發生整體性錯誤，請重新整理網頁後重試。'); 
                 mergeBtn.disabled = false; 
             }
         });
 
-        // --- 🌟 點擊「預覽檔案」---
         document.getElementById('btn-show-preview').addEventListener('click', () => {
             if (!finalMergedBlob) return;
             if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
@@ -415,14 +432,12 @@
             iframe.src = previewObjectURL;
             contentDiv.appendChild(iframe);
             
-            showModal(); // 開啟預覽
+            showModal(); 
         });
 
-        // --- 🌟 點擊「傳送 / 儲存」---
         document.getElementById('btn-trigger-share').addEventListener('click', async () => {
             if (!finalMergedPdfFile) return;
 
-            // 優先嘗試手機原生分享 API
             if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
                 try {
                     await navigator.share({
@@ -434,7 +449,6 @@
                     console.log('分享取消', error);
                 }
             } else {
-                // 桌機處理：跳出 File Picker 或直接下載
                 try {
                     if (window.showSaveFilePicker) {
                         const fileHandle = await window.showSaveFilePicker({ 
@@ -448,7 +462,7 @@
                         updateStatus('✅ 儲存成功！', true);
                         setTimeout(()=>updateStatus('',false), 3000);
                     } else {
-                        throw new Error('Fallback to traditional download');
+                        throw new Error('Fallback');
                     }
                 } catch (err) {
                     if (err.name !== 'AbortError') {
@@ -457,7 +471,7 @@
                         a.href = u; a.download = finalDefaultName;
                         document.body.appendChild(a); a.click(); document.body.removeChild(a);
                         URL.revokeObjectURL(u);
-                        updateStatus('📥 已為您自動下載檔案！', true);
+                        updateStatus('📥 設備不支援系統分享選單，已為您自動下載檔案！', true);
                         setTimeout(()=>updateStatus('',false), 3000);
                     }
                 }
