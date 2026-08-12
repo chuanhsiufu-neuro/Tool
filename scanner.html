@@ -61,19 +61,24 @@
         .btn-action.secondary { background-color: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-light); }
         .btn-action.secondary:hover { background-color: #DCE4E0; }
 
-        /* --- 儲存與命名面板 --- */
+        /* --- 儲存與命名面板 (徹底拿掉另存新檔按鈕) --- */
         .save-panel {
             display: none; flex-direction: column; align-items: center; justify-content: center;
             width: 100%; height: 100%; background: var(--surface); padding: 20px; gap: 20px;
         }
         .save-panel h3 { font-size: 1.2rem; color: var(--text-main); margin-bottom: 10px;}
-        .input-group { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 400px; }
+        .input-group { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 350px; }
         .input-group input { 
             flex-grow: 1; padding: 10px 14px; font-size: 1rem; border: 1px solid var(--border-light); 
             border-radius: var(--radius-sm); outline: none; color: var(--text-main);
         }
         .input-group input:focus { border-color: var(--primary); }
-        .action-buttons { display: flex; gap: 12px; width: 100%; max-width: 400px; margin-top: 10px; }
+        .action-buttons { display: flex; gap: 12px; width: 100%; max-width: 350px; margin-top: 10px; }
+        .btn-action-full {
+            width: 100%; background-color: var(--primary); color: white; border: none; padding: 14px 20px;
+            border-radius: var(--radius-sm); font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn-action-full:hover { background-color: var(--primary-hover); }
     </style>
 </head>
 <body>
@@ -97,16 +102,15 @@
         <button class="btn-action" id="btn-confirm-crop">✂️ 確定裁切</button>
     </div>
 
-    <!-- 儲存分流面板 -->
+    <!-- 儲存面板 (單一按鈕) -->
     <div class="save-panel" id="save-panel">
-        <h3>📄 設定檔案並選擇儲存方式</h3>
+        <h3>📄 設定檔案名稱</h3>
         <div class="input-group">
             <label style="font-weight:600; color:var(--text-main);">檔名：</label>
             <input type="text" id="file-name-input">
         </div>
         <div class="action-buttons">
-            <button class="btn-action" id="btn-send-main">📥 回主畫面 (加入列表)</button>
-            <button class="btn-action secondary" id="btn-download-local">💻 另存新檔 (本機)</button>
+            <button class="btn-action-full" id="btn-send-main">📥 加入列表 (回主畫面)</button>
         </div>
     </div>
 
@@ -148,7 +152,6 @@
             }
         }
         
-        // 載入網頁立刻啟動相機
         window.addEventListener('DOMContentLoaded', startCamera);
 
         // 2. 拍照並進入裁切模式
@@ -249,7 +252,6 @@
 
         // 4. 確定裁切 -> 進入儲存面板
         document.getElementById('btn-confirm-crop').addEventListener('click', () => {
-            // 關閉相機串流
             if (stream) stream.getTracks().forEach(t => t.stop());
 
             const rX = (cropBox.x - offsetX) / displayScale;
@@ -274,46 +276,24 @@
             }, 'image/jpeg', 0.95);
         });
 
-        // 5. 路線 A：回主畫面
+        // 5. 唯一按鈕：回主畫面 (改用 window.opener.postMessage)
         document.getElementById('btn-send-main').addEventListener('click', () => {
             const fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
             const reader = new FileReader();
             reader.onloadend = () => {
-                const channel = new BroadcastChannel('pdf_merger_channel');
                 const d = new Date();
                 const fullFileName = `${fileName}_${d.getHours()}${d.getMinutes()}${d.getSeconds()}.jpg`;
                 
-                channel.postMessage({ type: 'ADD_IMAGE', data: reader.result, name: fullFileName });
-                
-                // 喚醒原本的主畫面並關閉掃描器
-                if (window.opener) { window.opener.focus(); }
-                window.close(); 
+                // 透過 window.opener 直接傳送，無懼 file:// 安全限制
+                if (window.opener) { 
+                    window.opener.postMessage({ type: 'ADD_IMAGE', data: reader.result, name: fullFileName }, '*');
+                    window.opener.focus(); // 喚醒主畫面
+                } else {
+                    alert('找不到主畫面，無法加入列表。');
+                }
+                window.close(); // 瞬間關閉裁切視窗
             };
             reader.readAsDataURL(resultBlob);
-        });
-
-        // 6. 路線 B：另存新檔 (本機)
-        document.getElementById('btn-download-local').addEventListener('click', async () => {
-            let fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
-            if (!fileName.toLowerCase().endsWith('.jpg')) fileName += '.jpg';
-            
-            try {
-                if (window.showSaveFilePicker) {
-                    const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'JPEG 影像', accept: { 'image/jpeg': ['.jpg'] } }] });
-                    const writable = await handle.createWritable();
-                    await writable.write(resultBlob);
-                    await writable.close();
-                    window.close();
-                } else { throw new Error('Not supported'); }
-            } catch (err) {
-                if (err.name !== 'AbortError') {
-                    const url = URL.createObjectURL(resultBlob);
-                    const a = document.createElement('a'); a.href = url; a.download = fileName;
-                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    window.close();
-                }
-            }
         });
     </script>
 </body>
