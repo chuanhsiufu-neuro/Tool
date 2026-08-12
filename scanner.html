@@ -15,13 +15,10 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
             background-color: var(--bg-color); color: white; 
-            /* 🌟 關鍵修正：使用 100dvh (動態視窗高度)，避免被手機瀏覽器網址列遮擋底部 */
             height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
         }
 
-        /* --- 工作區塊 (影片/畫布) --- */
         .workspace {
-            /* 🌟 關鍵修正：加入 min-height: 0 防止內容把底部按鈕擠出去 */
             flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; 
             overflow: hidden; width: 100%;
         }
@@ -31,26 +28,23 @@
 
         /* 放大鏡 */
         #magnifier {
-            position: absolute; width: 120px; height: 120px; border-radius: 50%;
+            position: absolute; width: 130px; height: 130px; border-radius: 50%;
             border: 3px solid var(--primary); background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             display: none; z-index: 100; pointer-events: none; overflow: hidden;
         }
         #mag-canvas { width: 100%; height: 100%; }
         #magnifier::after {
-            content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px;
+            content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px;
             transform: translate(-50%, -50%); background: rgba(212, 140, 140, 0.8); border-radius: 50%;
         }
 
-        /* --- 底部控制列 --- */
         .bottom-bar {
-            /* 🌟 關鍵修正：flex-shrink: 0 保證按鈕區塊絕對不會被壓縮，且適配 iPhone 底部安全區 */
             flex-shrink: 0; background: var(--surface); padding: 16px 24px; 
             padding-bottom: max(16px, env(safe-area-inset-bottom));
             display: flex; justify-content: center; align-items: center; gap: 16px;
             box-shadow: 0 -4px 12px rgba(0,0,0,0.1); z-index: 10;
         }
         
-        /* 拍照大圓鈕 */
         .btn-capture-round {
             background-color: var(--primary); width: 68px; height: 68px; border-radius: 50%; 
             border: 4px solid var(--surface); box-shadow: 0 0 0 2px var(--primary); cursor: pointer; transition: 0.1s;
@@ -66,7 +60,6 @@
         .btn-action.secondary { background-color: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-light); }
         .btn-action.secondary:hover { background-color: #DCE4E0; }
 
-        /* --- 儲存與命名面板 --- */
         .save-panel {
             display: none; flex-direction: column; align-items: center; justify-content: center;
             width: 100%; height: 100%; background: var(--surface); padding: 20px; gap: 20px;
@@ -88,26 +81,22 @@
 </head>
 <body>
 
-    <!-- 工作區：相機與裁切 -->
     <div class="workspace" id="workspace">
         <video id="camera-video" autoplay playsinline></video>
         <canvas id="snapshot-canvas"></canvas>
         <canvas id="crop-overlay"></canvas>
-        <div id="magnifier"><canvas id="mag-canvas" width="120" height="120"></canvas></div>
+        <div id="magnifier"><canvas id="mag-canvas" width="130" height="130"></canvas></div>
     </div>
 
-    <!-- 底部控制列：拍照 -->
     <div class="bottom-bar" id="bar-camera">
         <button class="btn-capture-round" id="btn-do-capture" title="拍照"></button>
     </div>
 
-    <!-- 底部控制列：裁切確認 -->
     <div class="bottom-bar" id="bar-crop" style="display: none;">
         <button class="btn-action secondary" id="btn-retake">✕ 重拍</button>
         <button class="btn-action" id="btn-confirm-crop">✂️ 確定裁切</button>
     </div>
 
-    <!-- 儲存面板 -->
     <div class="save-panel" id="save-panel">
         <h3>📄 設定檔案名稱</h3>
         <div class="input-group">
@@ -140,7 +129,6 @@
         let isCropMode = false;
         let isDragging = false, startPointer = {x:0, y:0}, startBox = {}, holdTimer = null, isMagnifying = false;
 
-        // 1. 啟動相機
         async function startCamera() {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
@@ -156,9 +144,7 @@
         
         window.addEventListener('DOMContentLoaded', startCamera);
 
-        // 2. 拍照並進入裁切模式
         document.getElementById('btn-do-capture').addEventListener('click', () => {
-            // 🌟 修正：擷取當下的正確寬高 (應對手機轉向)
             imageWidth = video.videoWidth;
             imageHeight = video.videoHeight;
             
@@ -166,7 +152,6 @@
             snapshotCanvas.height = imageHeight;
             snapCtx.drawImage(video, 0, 0, imageWidth, imageHeight);
             
-            // 介面切換
             isCropMode = true;
             video.style.display = 'none';
             snapshotCanvas.style.display = 'block';
@@ -177,7 +162,6 @@
             initCropBox();
         });
 
-        // 重拍
         document.getElementById('btn-retake').addEventListener('click', () => {
             isCropMode = false;
             snapshotCanvas.style.display = 'none';
@@ -187,35 +171,11 @@
             barCrop.style.display = 'none';
         });
 
-        // 🌟 核心修正：監聽視窗轉向，直接「重新初始化」裁切框與觸控 API
         let resizeTimer;
         window.addEventListener('resize', () => {
             if (!isCropMode || imageWidth === 0) return;
-
-            // 加入短暫延遲 (Debounce)，確保手機瀏覽器確實轉向完畢、座標 API 刷新後再執行
             clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-                // 重新抓取當前工作區的真實寬高 API
-                const rect = workspace.getBoundingClientRect();
-                overlayCanvas.width = rect.width;
-                overlayCanvas.height = rect.height;
-
-                // 重新計算新比例
-                displayScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
-                const dW = imageWidth * displayScale;
-                const dH = imageHeight * displayScale;
-                offsetX = (rect.width - dW) / 2;
-                offsetY = (rect.height - dH) / 2;
-
-                // 🌟 暴力解法：轉向後直接給予一個全新的、佔畫面 80% 的裁切框
-                // 這樣能保證四個角的觸控熱區絕對吻合最新的螢幕座標
-                cropBox.w = dW * 0.8;
-                cropBox.h = dH * 0.8;
-                cropBox.x = offsetX + (dW * 0.1);
-                cropBox.y = offsetY + (dH * 0.1);
-
-                drawOverlay();
-            }, 150); // 150 毫秒的緩衝時間，專治手機版 Safari/Chrome 轉向延遲
+            resizeTimer = setTimeout(() => { initCropBox(); }, 150);
         });
 
         function initCropBox() {
@@ -237,7 +197,6 @@
             drawOverlay();
         }
 
-        // 3. 裁切與放大鏡邏輯
         function drawOverlay() {
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
             overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
@@ -250,14 +209,25 @@
 
             const corners = [{x: cropBox.x, y: cropBox.y}, {x: cropBox.x + cropBox.w, y: cropBox.y}, {x: cropBox.x, y: cropBox.y + cropBox.h}, {x: cropBox.x + cropBox.w, y: cropBox.y + cropBox.h}];
             overlayCtx.fillStyle = '#FFFFFF';
-            corners.forEach(p => { overlayCtx.beginPath(); overlayCtx.arc(p.x, p.y, 10, 0, Math.PI * 2); overlayCtx.fill(); overlayCtx.stroke(); });
+            corners.forEach(p => { overlayCtx.beginPath(); overlayCtx.arc(p.x, p.y, 14, 0, Math.PI * 2); overlayCtx.fill(); overlayCtx.stroke(); });
         }
 
         function updateMagnifier(px, py) {
-            document.getElementById('magnifier').style.left = `${px - 60}px`; document.getElementById('magnifier').style.top = `${py - 140}px`;
-            const rX = (px - offsetX) / displayScale, rY = (py - offsetY) / displayScale;
-            magCtx.clearRect(0, 0, 120, 120);
-            magCtx.drawImage(snapshotCanvas, rX - 30, rY - 30, 60, 60, 0, 0, 120, 120);
+            document.getElementById('magnifier').style.left = `${px - 65}px`; document.getElementById('magnifier').style.top = `${py - 150}px`;
+            
+            // 🌟 核心修正：將 CSS 畫面大小反推回原始圖片真正的像素大小，消除解析度落差
+            const rX = (px - offsetX) / displayScale;
+            const rY = (py - offsetY) / displayScale;
+            
+            // 我們想在畫面上抓取約 60px 寬度的真實內容來放大，換算回真實圖片長度
+            const sourceSize = 60 / displayScale; 
+
+            magCtx.clearRect(0, 0, 130, 130);
+            magCtx.drawImage(
+                snapshotCanvas, 
+                rX - (sourceSize / 2), rY - (sourceSize / 2), sourceSize, sourceSize, // 原始圖片的精確擷取區塊
+                0, 0, 130, 130 // 畫到放大鏡畫布上
+            );
         }
 
         overlayCanvas.addEventListener('pointerdown', (e) => {
@@ -274,7 +244,7 @@
 
             if (activeHandle) {
                 isDragging = true;
-                holdTimer = setTimeout(() => { if (isDragging) { isMagnifying = true; document.getElementById('magnifier').style.display = 'block'; updateMagnifier(px, py); } }, 800);
+                holdTimer = setTimeout(() => { if (isDragging) { isMagnifying = true; document.getElementById('magnifier').style.display = 'block'; updateMagnifier(px, py); } }, 500);
             }
         });
 
@@ -293,7 +263,6 @@
 
         window.addEventListener('pointerup', () => { isDragging = false; activeHandle = null; clearTimeout(holdTimer); isMagnifying = false; document.getElementById('magnifier').style.display = 'none'; });
 
-        // 4. 確定裁切 -> 進入儲存面板
         document.getElementById('btn-confirm-crop').addEventListener('click', () => {
             if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -319,7 +288,6 @@
             }, 'image/jpeg', 0.95);
         });
 
-        // 5. 回主畫面
         document.getElementById('btn-send-main').addEventListener('click', () => {
             const fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
             const reader = new FileReader();
