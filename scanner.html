@@ -187,34 +187,35 @@
             barCrop.style.display = 'none';
         });
 
-        // 🌟 核心修正：監聽視窗轉向，重新計算比例與座標
+        // 🌟 核心修正：監聽視窗轉向，直接「重新初始化」裁切框與觸控 API
+        let resizeTimer;
         window.addEventListener('resize', () => {
             if (!isCropMode || imageWidth === 0) return;
 
-            const rect = workspace.getBoundingClientRect();
-            overlayCanvas.width = rect.width;
-            overlayCanvas.height = rect.height;
+            // 加入短暫延遲 (Debounce)，確保手機瀏覽器確實轉向完畢、座標 API 刷新後再執行
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                // 重新抓取當前工作區的真實寬高 API
+                const rect = workspace.getBoundingClientRect();
+                overlayCanvas.width = rect.width;
+                overlayCanvas.height = rect.height;
 
-            // 記錄轉向前，裁切框在「原圖」上的相對位置
-            const origX = (cropBox.x - offsetX) / displayScale;
-            const origY = (cropBox.y - offsetY) / displayScale;
-            const origW = cropBox.w / displayScale;
-            const origH = cropBox.h / displayScale;
+                // 重新計算新比例
+                displayScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
+                const dW = imageWidth * displayScale;
+                const dH = imageHeight * displayScale;
+                offsetX = (rect.width - dW) / 2;
+                offsetY = (rect.height - dH) / 2;
 
-            // 重新計算新比例
-            displayScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
-            const dW = imageWidth * displayScale;
-            const dH = imageHeight * displayScale;
-            offsetX = (rect.width - dW) / 2;
-            offsetY = (rect.height - dH) / 2;
+                // 🌟 暴力解法：轉向後直接給予一個全新的、佔畫面 80% 的裁切框
+                // 這樣能保證四個角的觸控熱區絕對吻合最新的螢幕座標
+                cropBox.w = dW * 0.8;
+                cropBox.h = dH * 0.8;
+                cropBox.x = offsetX + (dW * 0.1);
+                cropBox.y = offsetY + (dH * 0.1);
 
-            // 把裁切框完美還原到新比例的位置上
-            cropBox.x = offsetX + (origX * displayScale);
-            cropBox.y = offsetY + (origY * displayScale);
-            cropBox.w = origW * displayScale;
-            cropBox.h = origH * displayScale;
-
-            drawOverlay();
+                drawOverlay();
+            }, 150); // 150 毫秒的緩衝時間，專治手機版 Safari/Chrome 轉向延遲
         });
 
         function initCropBox() {
