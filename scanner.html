@@ -2,326 +2,223 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>網頁版掃描器測試</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>相機掃描與裁切</title>
     <style>
         :root {
-            --primary: #8CA395;
-            --primary-hover: #768C7E;
-            --bg-color: #F4F6F5;
-            --surface: #FFFFFF;
-            --text-main: #3E4F45;
-            --text-muted: #75867D;
-            --border-light: #D1DCD6;
-            --radius-lg: 16px;
-            --radius-md: 12px;
-            --shadow-sm: 0 1px 3px rgba(62, 79, 69, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(62, 79, 69, 0.06);
+            --primary: #8CA395; --primary-hover: #768C7E; --bg-color: #2C3330;
+            --surface: #FFFFFF; --text-main: #3E4F45; --border-light: #D1DCD6;
+            --radius-md: 12px; --radius-sm: 8px;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            display: flex;
-            flex-direction: column;
-            height: 100vh; height: 100dvh; 
-            width: 100vw;
-            overflow: hidden;
+            background-color: var(--bg-color); color: white; 
+            height: 100vh; display: flex; flex-direction: column; overflow: hidden;
         }
 
-        .header {
-            padding: 16px; text-align: center; background: var(--surface);
-            box-shadow: var(--shadow-sm); z-index: 10; flex-shrink: 0;
+        /* --- 工作區塊 (影片/畫布) --- */
+        .workspace {
+            flex-grow: 1; position: relative; display: flex; justify-content: center; align-items: center; 
+            overflow: hidden; width: 100%;
         }
-        .header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.5px; }
-
-        /* --- 面板共用容器 --- */
-        .panel {
-            flex-grow: 1; display: none; flex-direction: column;
-            justify-content: center; align-items: center; padding: 16px;
-            overflow: hidden;
-        }
-        .panel.active { display: flex; }
-
-        /* --- 階段一：啟動畫面 --- */
-        #intro-panel { gap: 20px; }
-        .intro-text { color: var(--text-muted); font-size: 0.95rem; text-align: center; line-height: 1.5; }
-        
-        button {
-            background-color: var(--primary); color: white; padding: 14px 24px;
-            font-size: 1rem; font-weight: 600; border: none; border-radius: var(--radius-md);
-            cursor: pointer; box-shadow: var(--shadow-md); transition: transform 0.1s, background-color 0.2s;
-        }
-        button:active { transform: scale(0.96); }
-        button:disabled { background-color: var(--border-light); cursor: not-allowed; }
-        button.secondary { background-color: var(--surface); color: var(--text-main); border: 1px solid var(--border-light); }
-
-        /* --- 階段二：觀景窗與裁切 --- */
-        .viewport-wrapper {
-            position: relative; width: 100%; height: 100%; background: #2C3330;
-            border-radius: var(--radius-lg); overflow: hidden;
-            display: flex; justify-content: center; align-items: center;
-        }
-        #camera-video, #snapshot-canvas {
-            position: absolute; width: 100%; height: 100%; object-fit: contain;
-        }
+        #camera-video, #snapshot-canvas { position: absolute; max-width: 100%; max-height: 100%; object-fit: contain; }
         #snapshot-canvas { display: none; }
-        #crop-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: none; z-index: 5; touch-action: none;
-        }
+        #crop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; z-index: 5; touch-action: none; }
 
-        /* 放大鏡 UI */
+        /* 放大鏡 */
         #magnifier {
             position: absolute; width: 120px; height: 120px; border-radius: 50%;
-            border: 3px solid var(--primary); background: #fff;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: none;
-            z-index: 100; pointer-events: none; overflow: hidden;
+            border: 3px solid var(--primary); background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none; z-index: 100; pointer-events: none; overflow: hidden;
         }
         #mag-canvas { width: 100%; height: 100%; }
         #magnifier::after {
-            content: ''; position: absolute; top: 50%; left: 50%;
-            width: 8px; height: 8px; transform: translate(-50%, -50%);
-            background: rgba(212, 140, 140, 0.8); border-radius: 50%; /* 紅點準心 */
-        }
-
-        /* --- 階段三：預覽與儲存 --- */
-        #preview-panel { gap: 20px; justify-content: flex-start; padding-top: 24px; }
-        .preview-image-container {
-            width: 100%; max-height: 50vh; display: flex; justify-content: center;
-            background: #E8EFEA; border-radius: var(--radius-md); padding: 10px; border: 1px dashed var(--primary);
-        }
-        #final-preview-img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: var(--shadow-sm); }
-        
-        .filename-input-group {
-            width: 100%; display: flex; align-items: center; gap: 10px;
-            background: var(--surface); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-light);
-        }
-        .filename-input-group label { font-weight: 600; font-size: 0.95rem; white-space: nowrap; }
-        .filename-input-group input {
-            flex-grow: 1; border: none; outline: none; font-size: 1rem; color: var(--text-main); min-width: 0;
+            content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px;
+            transform: translate(-50%, -50%); background: rgba(212, 140, 140, 0.8); border-radius: 50%;
         }
 
         /* --- 底部控制列 --- */
-        .controls {
-            padding: 20px 24px; background: var(--surface); flex-shrink: 0;
-            box-shadow: 0 -4px 6px -1px rgba(62, 79, 69, 0.04);
-            display: none; justify-content: center; gap: 16px; z-index: 10;
-            padding-bottom: env(safe-area-inset-bottom, 24px);
+        .bottom-bar {
+            background: var(--surface); padding: 16px 24px; display: flex; justify-content: center; align-items: center; gap: 16px;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.1); z-index: 10;
         }
-        .controls.active { display: flex; }
         
-        #btn-capture { 
-            width: 68px; height: 68px; border-radius: 50%; padding: 0; 
-            border: 4px solid var(--surface); box-shadow: 0 0 0 2px var(--primary); 
+        /* 拍照大圓鈕 */
+        .btn-capture-round {
+            background-color: var(--primary); width: 68px; height: 68px; border-radius: 50%; 
+            border: 4px solid var(--surface); box-shadow: 0 0 0 2px var(--primary); cursor: pointer; transition: 0.1s;
         }
-        .btn-group { display: flex; gap: 12px; width: 100%; max-width: 500px; }
-        .btn-group button { flex: 1; }
+        .btn-capture-round:active { transform: scale(0.92); }
 
-        #status-msg { display: none; color: var(--danger); text-align: center; font-size: 0.9rem; margin-top: 10px; font-weight: 600; }
+        .btn-action {
+            flex: 1; max-width: 250px; background-color: var(--primary); color: white; border: none; padding: 14px 20px;
+            border-radius: var(--radius-sm); font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-action:hover { background-color: var(--primary-hover); }
+        .btn-action.secondary { background-color: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-light); }
+        .btn-action.secondary:hover { background-color: #DCE4E0; }
+
+        /* --- 儲存與命名面板 --- */
+        .save-panel {
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%; height: 100%; background: var(--surface); padding: 20px; gap: 20px;
+        }
+        .save-panel h3 { font-size: 1.2rem; color: var(--text-main); margin-bottom: 10px;}
+        .input-group { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 400px; }
+        .input-group input { 
+            flex-grow: 1; padding: 10px 14px; font-size: 1rem; border: 1px solid var(--border-light); 
+            border-radius: var(--radius-sm); outline: none; color: var(--text-main);
+        }
+        .input-group input:focus { border-color: var(--primary); }
+        .action-buttons { display: flex; gap: 12px; width: 100%; max-width: 400px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="header"><h1>📸 網頁掃描器</h1></div>
-
-    <!-- 階段一：啟動畫面 -->
-    <div class="panel active" id="intro-panel">
-        <svg style="width: 80px; height: 80px; color: #8CA395;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-        <div class="intro-text">長按邊界超過 1 秒鐘即可啟用「放大鏡微調」功能</div>
-        <button id="btn-start">開啟相機</button>
-        <div id="status-msg"></div>
+    <!-- 工作區：相機與裁切 -->
+    <div class="workspace" id="workspace">
+        <video id="camera-video" autoplay playsinline></video>
+        <canvas id="snapshot-canvas"></canvas>
+        <canvas id="crop-overlay"></canvas>
+        <div id="magnifier"><canvas id="mag-canvas" width="120" height="120"></canvas></div>
     </div>
 
-    <!-- 階段二：觀景窗與裁切工作區 -->
-    <div class="panel" id="workspace-panel">
-        <div class="viewport-wrapper" id="viewport">
-            <video id="camera-video" autoplay playsinline></video>
-            <canvas id="snapshot-canvas"></canvas>
-            <canvas id="crop-overlay"></canvas>
-            
-            <!-- 放大鏡元素 -->
-            <div id="magnifier">
-                <canvas id="mag-canvas" width="120" height="120"></canvas>
-            </div>
-        </div>
+    <!-- 底部控制列：拍照 -->
+    <div class="bottom-bar" id="bar-camera">
+        <button class="btn-capture-round" id="btn-do-capture" title="拍照"></button>
     </div>
 
-    <!-- 階段三：預覽與存檔畫面 -->
-    <div class="panel" id="preview-panel">
-        <h2 style="font-size: 1.1rem; color: var(--primary);">請確認掃描結果</h2>
-        <div class="preview-image-container">
-            <img id="final-preview-img" alt="擷取預覽" />
-        </div>
-        <div class="filename-input-group">
-            <label>檔名：</label>
-            <input type="text" id="input-filename" value="掃描文件">
-        </div>
+    <!-- 底部控制列：裁切確認 -->
+    <div class="bottom-bar" id="bar-crop" style="display: none;">
+        <button class="btn-action secondary" id="btn-retake">✕ 重拍</button>
+        <button class="btn-action" id="btn-confirm-crop">✂️ 確定裁切</button>
     </div>
 
-    <!-- 控制列 -->
-    <div class="controls" id="ctrl-camera">
-        <button id="btn-capture" title="拍照"></button>
-    </div>
-    <div class="controls" id="ctrl-crop">
-        <div class="btn-group">
-            <button class="secondary" id="btn-retake">✕ 重拍</button>
-            <button id="btn-do-crop">✂️ 裁切</button>
+    <!-- 儲存分流面板 -->
+    <div class="save-panel" id="save-panel">
+        <h3>📄 設定檔案並選擇儲存方式</h3>
+        <div class="input-group">
+            <label style="font-weight:600; color:var(--text-main);">檔名：</label>
+            <input type="text" id="file-name-input">
         </div>
-    </div>
-    <div class="controls" id="ctrl-preview">
-        <div class="btn-group">
-            <button class="secondary" id="btn-back-crop">↩ 返回裁切</button>
-            <button id="btn-save-file">💾 選擇路徑並儲存</button>
+        <div class="action-buttons">
+            <button class="btn-action" id="btn-send-main">📥 回主畫面 (加入列表)</button>
+            <button class="btn-action secondary" id="btn-download-local">💻 另存新檔 (本機)</button>
         </div>
     </div>
 
     <script>
-        // DOM Elements
-        const panels = {
-            intro: document.getElementById('intro-panel'),
-            workspace: document.getElementById('workspace-panel'),
-            preview: document.getElementById('preview-panel')
-        };
-        const ctrls = {
-            camera: document.getElementById('ctrl-camera'),
-            crop: document.getElementById('ctrl-crop'),
-            preview: document.getElementById('ctrl-preview')
-        };
-        
         const video = document.getElementById('camera-video');
         const snapshotCanvas = document.getElementById('snapshot-canvas');
         const snapCtx = snapshotCanvas.getContext('2d');
         const overlayCanvas = document.getElementById('crop-overlay');
         const overlayCtx = overlayCanvas.getContext('2d');
-        
-        const magnifier = document.getElementById('magnifier');
-        const magCanvas = document.getElementById('mag-canvas');
-        const magCtx = magCanvas.getContext('2d');
-        
+        const magCtx = document.getElementById('mag-canvas').getContext('2d');
+
+        const workspace = document.getElementById('workspace');
+        const barCamera = document.getElementById('bar-camera');
+        const barCrop = document.getElementById('bar-crop');
+        const savePanel = document.getElementById('save-panel');
+
         let stream = null;
-        let imageWidth = 0; let imageHeight = 0;
-        let displayScale = 1; let offsetX = 0; let offsetY = 0;
+        let imageWidth = 0, imageHeight = 0;
+        let displayScale = 1, offsetX = 0, offsetY = 0;
         let cropBox = { x: 50, y: 50, w: 200, h: 300 };
-        let activeHandle = null;
-        let finalImageBlob = null; // 儲存最後要下載的影像
+        let activeHandle = null, resultBlob = null;
+        let isDragging = false, startPointer = {x:0, y:0}, startBox = {}, holdTimer = null, isMagnifying = false;
 
-        // 切換畫面函數
-        function switchMode(mode) {
-            Object.values(panels).forEach(p => p.classList.remove('active'));
-            Object.values(ctrls).forEach(c => c.classList.remove('active'));
-            
-            if(mode === 'intro') { panels.intro.classList.add('active'); }
-            if(mode === 'camera') { panels.workspace.classList.add('active'); ctrls.camera.classList.add('active'); }
-            if(mode === 'crop') { panels.workspace.classList.add('active'); ctrls.crop.classList.add('active'); }
-            if(mode === 'preview') { panels.preview.classList.add('active'); ctrls.preview.classList.add('active'); }
-        }
-
-        // --- 1. 開啟相機 ---
-        document.getElementById('btn-start').addEventListener('click', async (e) => {
-            const btn = e.target;
-            btn.textContent = '相機啟動中...'; btn.disabled = true;
+        // 1. 啟動相機
+        async function startCamera() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+                    audio: false 
                 });
                 video.srcObject = stream;
-                switchMode('camera');
-                
-                video.onloadedmetadata = () => { imageWidth = video.videoWidth; imageHeight = video.videoHeight; };
+                video.onloadedmetadata = () => {
+                    imageWidth = video.videoWidth;
+                    imageHeight = video.videoHeight;
+                    video.play();
+                };
             } catch (err) {
-                document.getElementById('status-msg').style.display = 'block';
-                document.getElementById('status-msg').innerHTML = '無法存取相機。<br>請確認權限，且必須在 HTTPS 網域開啟。';
-                btn.textContent = '開啟相機'; btn.disabled = false;
+                alert("相機啟動失敗，請確認設備或權限設定。");
             }
-        });
+        }
+        
+        // 載入網頁立刻啟動相機
+        window.addEventListener('DOMContentLoaded', startCamera);
 
-        // --- 2. 拍照 ---
-        document.getElementById('btn-capture').addEventListener('click', () => {
-            snapshotCanvas.width = imageWidth; snapshotCanvas.height = imageHeight;
+        // 2. 拍照並進入裁切模式
+        document.getElementById('btn-do-capture').addEventListener('click', () => {
+            snapshotCanvas.width = imageWidth;
+            snapshotCanvas.height = imageHeight;
             snapCtx.drawImage(video, 0, 0, imageWidth, imageHeight);
             
+            // 介面切換
             video.style.display = 'none';
             snapshotCanvas.style.display = 'block';
             overlayCanvas.style.display = 'block';
-            switchMode('crop');
-            initCropUI();
-        });
+            barCamera.style.display = 'none';
+            barCrop.style.display = 'flex';
 
-        // --- 3. 重拍 ---
-        document.getElementById('btn-retake').addEventListener('click', () => {
-            snapshotCanvas.style.display = 'none'; overlayCanvas.style.display = 'none';
-            video.style.display = 'block';
-            switchMode('camera');
-        });
-
-        // --- 4. 繪製裁切區 ---
-        function initCropUI() {
-            const rect = document.getElementById('viewport').getBoundingClientRect();
-            overlayCanvas.width = rect.width; overlayCanvas.height = rect.height;
+            // 初始化裁切框
+            const rect = workspace.getBoundingClientRect();
+            overlayCanvas.width = rect.width;
+            overlayCanvas.height = rect.height;
 
             displayScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
-            const displayW = imageWidth * displayScale;
-            const displayH = imageHeight * displayScale;
-            offsetX = (rect.width - displayW) / 2; offsetY = (rect.height - displayH) / 2;
+            const dW = imageWidth * displayScale;
+            const dH = imageHeight * displayScale;
+            offsetX = (rect.width - dW) / 2;
+            offsetY = (rect.height - dH) / 2;
 
-            cropBox.w = displayW * 0.8; cropBox.h = displayH * 0.8;
-            cropBox.x = offsetX + (displayW * 0.1); cropBox.y = offsetY + (displayH * 0.1);
+            cropBox.w = dW * 0.8;
+            cropBox.h = dH * 0.8;
+            cropBox.x = offsetX + (dW * 0.1);
+            cropBox.y = offsetY + (dH * 0.1);
+
             drawOverlay();
-        }
+        });
 
+        // 重拍
+        document.getElementById('btn-retake').addEventListener('click', () => {
+            snapshotCanvas.style.display = 'none';
+            overlayCanvas.style.display = 'none';
+            video.style.display = 'block';
+            barCamera.style.display = 'flex';
+            barCrop.style.display = 'none';
+        });
+
+        // 3. 裁切與放大鏡邏輯
         function drawOverlay() {
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            overlayCtx.fillStyle = 'rgba(44, 51, 48, 0.65)'; overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            overlayCtx.globalCompositeOperation = 'destination-out'; overlayCtx.fillRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
+            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            overlayCtx.globalCompositeOperation = 'destination-out';
+            overlayCtx.fillRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
             overlayCtx.globalCompositeOperation = 'source-over';
-            overlayCtx.strokeStyle = '#8CA395'; overlayCtx.lineWidth = 2.5; overlayCtx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
+            overlayCtx.strokeStyle = '#8CA395'; overlayCtx.lineWidth = 2.5;
+            overlayCtx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h);
 
-            const corners = [ {x: cropBox.x, y: cropBox.y}, {x: cropBox.x + cropBox.w, y: cropBox.y}, {x: cropBox.x, y: cropBox.y + cropBox.h}, {x: cropBox.x + cropBox.w, y: cropBox.y + cropBox.h} ];
+            const corners = [{x: cropBox.x, y: cropBox.y}, {x: cropBox.x + cropBox.w, y: cropBox.y}, {x: cropBox.x, y: cropBox.y + cropBox.h}, {x: cropBox.x + cropBox.w, y: cropBox.y + cropBox.h}];
             overlayCtx.fillStyle = '#FFFFFF';
-            corners.forEach(p => {
-                overlayCtx.beginPath(); overlayCtx.arc(p.x, p.y, 9, 0, Math.PI * 2); overlayCtx.fill(); overlayCtx.stroke();
-            });
+            corners.forEach(p => { overlayCtx.beginPath(); overlayCtx.arc(p.x, p.y, 10, 0, Math.PI * 2); overlayCtx.fill(); overlayCtx.stroke(); });
         }
 
-        // --- 5. 拖曳與長按放大鏡邏輯 ---
-        let isDragging = false;
-        let startPointer = { x: 0, y: 0 };
-        let startBox = {};
-        
-        let holdTimer = null;
-        let isMagnifying = false;
-
-        function updateMagnifier(pointerX, pointerY) {
-            // 定位放大鏡在手指左上方，避免被手指遮住
-            const magX = pointerX - 60;
-            const magY = pointerY - 140; 
-            magnifier.style.left = `${magX}px`;
-            magnifier.style.top = `${magY}px`;
-
-            // 計算手指對應真實圖片的高解析度座標
-            const realX = (pointerX - offsetX) / displayScale;
-            const realY = (pointerY - offsetY) / displayScale;
-
-            // 抓取真實圖片的 60x60 區域，放到 120x120 的 Canvas (2倍放大)
-            const zoomSize = 60; 
+        function updateMagnifier(px, py) {
+            document.getElementById('magnifier').style.left = `${px - 60}px`; document.getElementById('magnifier').style.top = `${py - 140}px`;
+            const rX = (px - offsetX) / displayScale, rY = (py - offsetY) / displayScale;
             magCtx.clearRect(0, 0, 120, 120);
-            magCtx.drawImage(
-                snapshotCanvas,
-                realX - (zoomSize/2), realY - (zoomSize/2), zoomSize, zoomSize,
-                0, 0, 120, 120
-            );
+            magCtx.drawImage(snapshotCanvas, rX - 30, rY - 30, 60, 60, 0, 0, 120, 120);
         }
 
         overlayCanvas.addEventListener('pointerdown', (e) => {
-            const rect = overlayCanvas.getBoundingClientRect();
-            const px = e.clientX - rect.left; const py = e.clientY - rect.top;
+            const rect = overlayCanvas.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
             startPointer = { x: px, y: py }; startBox = { ...cropBox };
-            const margin = 30; 
-
+            const margin = 35;
             if (Math.abs(px - cropBox.x) < margin && Math.abs(py - cropBox.y) < margin) activeHandle = 'tl';
             else if (Math.abs(px - (cropBox.x + cropBox.w)) < margin && Math.abs(py - cropBox.y) < margin) activeHandle = 'tr';
             else if (Math.abs(px - cropBox.x) < margin && Math.abs(py - (cropBox.y + cropBox.h)) < margin) activeHandle = 'bl';
@@ -331,112 +228,90 @@
 
             if (activeHandle) {
                 isDragging = true;
-                // 設定 1 秒鐘的長按計時器
-                holdTimer = setTimeout(() => {
-                    if (isDragging) {
-                        isMagnifying = true;
-                        magnifier.style.display = 'block';
-                        updateMagnifier(px, py);
-                    }
-                }, 1000);
+                holdTimer = setTimeout(() => { if (isDragging) { isMagnifying = true; document.getElementById('magnifier').style.display = 'block'; updateMagnifier(px, py); } }, 800);
             }
         });
 
         overlayCanvas.addEventListener('pointermove', (e) => {
             if (!isDragging) return;
-            const rect = overlayCanvas.getBoundingClientRect();
-            const px = e.clientX - rect.left; const py = e.clientY - rect.top;
-            const dx = px - startPointer.x; const dy = py - startPointer.y;
-
-            if (activeHandle === 'move') { cropBox.x = startBox.x + dx; cropBox.y = startBox.y + dy; } 
-            else if (activeHandle === 'tl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; } 
-            else if (activeHandle === 'tr') { cropBox.w = startBox.w + dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; } 
-            else if (activeHandle === 'bl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.h = startBox.h + dy; } 
+            const px = e.clientX - overlayCanvas.getBoundingClientRect().left, py = e.clientY - overlayCanvas.getBoundingClientRect().top;
+            const dx = px - startPointer.x, dy = py - startPointer.y;
+            if (activeHandle === 'move') { cropBox.x = startBox.x + dx; cropBox.y = startBox.y + dy; }
+            else if (activeHandle === 'tl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; }
+            else if (activeHandle === 'tr') { cropBox.w = startBox.w + dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; }
+            else if (activeHandle === 'bl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.h = startBox.h + dy; }
             else if (activeHandle === 'br') { cropBox.w = startBox.w + dx; cropBox.h = startBox.h + dy; }
-
             if (cropBox.w < 50) cropBox.w = 50; if (cropBox.h < 50) cropBox.h = 50;
-            drawOverlay();
-
-            // 如果已經進入放大鏡模式，隨時更新放大鏡畫面
-            if (isMagnifying) {
-                updateMagnifier(px, py);
-            }
+            drawOverlay(); if (isMagnifying) updateMagnifier(px, py);
         });
 
-        window.addEventListener('pointerup', () => { 
-            isDragging = false; 
-            activeHandle = null; 
-            
-            // 手指放開時，清除計時器並隱藏放大鏡
-            clearTimeout(holdTimer);
-            isMagnifying = false;
-            magnifier.style.display = 'none';
-        });
+        window.addEventListener('pointerup', () => { isDragging = false; activeHandle = null; clearTimeout(holdTimer); isMagnifying = false; document.getElementById('magnifier').style.display = 'none'; });
 
-        // --- 6. 執行裁切並跳轉預覽畫面 ---
-        document.getElementById('btn-do-crop').addEventListener('click', () => {
-            const realX = (cropBox.x - offsetX) / displayScale;
-            const realY = (cropBox.y - offsetY) / displayScale;
-            const realW = cropBox.w / displayScale;
-            const realH = cropBox.h / displayScale;
+        // 4. 確定裁切 -> 進入儲存面板
+        document.getElementById('btn-confirm-crop').addEventListener('click', () => {
+            // 關閉相機串流
+            if (stream) stream.getTracks().forEach(t => t.stop());
+
+            const rX = (cropBox.x - offsetX) / displayScale;
+            const rY = (cropBox.y - offsetY) / displayScale;
+            const rW = cropBox.w / displayScale;
+            const rH = cropBox.h / displayScale;
 
             const finalCanvas = document.createElement('canvas');
-            finalCanvas.width = realW; finalCanvas.height = realH;
-            const finalCtx = finalCanvas.getContext('2d');
-            finalCtx.drawImage(snapshotCanvas, realX, realY, realW, realH, 0, 0, realW, realH);
-
-            // 將畫布轉為圖片 URL 顯示在主畫面上
-            const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
-            document.getElementById('final-preview-img').src = dataUrl;
+            finalCanvas.width = rW; finalCanvas.height = rH;
+            finalCanvas.getContext('2d').drawImage(snapshotCanvas, rX, rY, rW, rH, 0, 0, rW, rH);
             
-            // 同時產生 Blob 供稍後下載使用
-            finalCanvas.toBlob((blob) => { finalImageBlob = blob; }, 'image/jpeg', 0.95);
+            finalCanvas.toBlob(blob => { 
+                resultBlob = blob; 
+                
+                document.body.style.backgroundColor = "var(--surface)";
+                workspace.style.display = 'none';
+                barCrop.style.display = 'none';
+                savePanel.style.display = 'flex';
 
-            // 自動帶入今日日期作為預設檔名
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            document.getElementById('input-filename').value = `掃描文件_${yyyy}${mm}${dd}`;
-
-            switchMode('preview');
+                const d = new Date();
+                document.getElementById('file-name-input').value = `相機掃描_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+            }, 'image/jpeg', 0.95);
         });
 
-        // --- 7. 從預覽返回裁切 ---
-        document.getElementById('btn-back-crop').addEventListener('click', () => {
-            switchMode('crop');
+        // 5. 路線 A：回主畫面
+        document.getElementById('btn-send-main').addEventListener('click', () => {
+            const fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const channel = new BroadcastChannel('pdf_merger_channel');
+                const d = new Date();
+                const fullFileName = `${fileName}_${d.getHours()}${d.getMinutes()}${d.getSeconds()}.jpg`;
+                
+                channel.postMessage({ type: 'ADD_IMAGE', data: reader.result, name: fullFileName });
+                
+                // 喚醒原本的主畫面並關閉掃描器
+                if (window.opener) { window.opener.focus(); }
+                window.close(); 
+            };
+            reader.readAsDataURL(resultBlob);
         });
 
-        // --- 8. 儲存路徑與下載 ---
-        document.getElementById('btn-save-file').addEventListener('click', async () => {
-            if (!finalImageBlob) return;
-
-            let fileName = document.getElementById('input-filename').value.trim() || '掃描文件';
+        // 6. 路線 B：另存新檔 (本機)
+        document.getElementById('btn-download-local').addEventListener('click', async () => {
+            let fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
             if (!fileName.toLowerCase().endsWith('.jpg')) fileName += '.jpg';
-
+            
             try {
-                // 呼叫 File System API 讓使用者選擇儲存路徑
                 if (window.showSaveFilePicker) {
-                    const fileHandle = await window.showSaveFilePicker({
-                        suggestedName: fileName,
-                        types: [{ description: 'JPEG 影像', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } }]
-                    });
-                    const writable = await fileHandle.createWritable();
-                    await writable.write(finalImageBlob);
+                    const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'JPEG 影像', accept: { 'image/jpeg': ['.jpg'] } }] });
+                    const writable = await handle.createWritable();
+                    await writable.write(resultBlob);
                     await writable.close();
-                    alert('✅ 儲存成功！');
-                } else {
-                    // 如果瀏覽器不支援，則使用傳統下載
-                    throw new Error('Not supported');
-                }
+                    window.close();
+                } else { throw new Error('Not supported'); }
             } catch (err) {
-                // 處理傳統下載或使用者取消操作
                 if (err.name !== 'AbortError') {
-                    const url = URL.createObjectURL(finalImageBlob);
-                    const a = document.createElement('a');
-                    a.href = url; a.download = fileName;
+                    const url = URL.createObjectURL(resultBlob);
+                    const a = document.createElement('a'); a.href = url; a.download = fileName;
                     document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                    window.close();
                 }
             }
         });
