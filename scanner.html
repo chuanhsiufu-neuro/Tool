@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>相機掃描與裁切</title>
     <style>
         :root {
@@ -15,12 +15,14 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
             background-color: var(--bg-color); color: white; 
-            height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+            /* 🌟 關鍵修正：使用 100dvh (動態視窗高度)，避免被手機瀏覽器網址列遮擋底部 */
+            height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
         }
 
         /* --- 工作區塊 (影片/畫布) --- */
         .workspace {
-            flex-grow: 1; position: relative; display: flex; justify-content: center; align-items: center; 
+            /* 🌟 關鍵修正：加入 min-height: 0 防止內容把底部按鈕擠出去 */
+            flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; 
             overflow: hidden; width: 100%;
         }
         #camera-video, #snapshot-canvas { position: absolute; max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -41,7 +43,10 @@
 
         /* --- 底部控制列 --- */
         .bottom-bar {
-            background: var(--surface); padding: 16px 24px; display: flex; justify-content: center; align-items: center; gap: 16px;
+            /* 🌟 關鍵修正：flex-shrink: 0 保證按鈕區塊絕對不會被壓縮，且適配 iPhone 底部安全區 */
+            flex-shrink: 0; background: var(--surface); padding: 16px 24px; 
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            display: flex; justify-content: center; align-items: center; gap: 16px;
             box-shadow: 0 -4px 12px rgba(0,0,0,0.1); z-index: 10;
         }
         
@@ -61,7 +66,7 @@
         .btn-action.secondary { background-color: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-light); }
         .btn-action.secondary:hover { background-color: #DCE4E0; }
 
-        /* --- 儲存與命名面板 (徹底拿掉另存新檔按鈕) --- */
+        /* --- 儲存與命名面板 --- */
         .save-panel {
             display: none; flex-direction: column; align-items: center; justify-content: center;
             width: 100%; height: 100%; background: var(--surface); padding: 20px; gap: 20px;
@@ -102,7 +107,7 @@
         <button class="btn-action" id="btn-confirm-crop">✂️ 確定裁切</button>
     </div>
 
-    <!-- 儲存面板 (單一按鈕) -->
+    <!-- 儲存面板 -->
     <div class="save-panel" id="save-panel">
         <h3>📄 設定檔案名稱</h3>
         <div class="input-group">
@@ -110,7 +115,7 @@
             <input type="text" id="file-name-input">
         </div>
         <div class="action-buttons">
-            <button class="btn-action-full" id="btn-send-main">📥 加入列表 (回主畫面)</button>
+            <button class="btn-action-full" id="btn-send-main">📥 確認加入列表 (回主畫面)</button>
         </div>
     </div>
 
@@ -132,6 +137,7 @@
         let displayScale = 1, offsetX = 0, offsetY = 0;
         let cropBox = { x: 50, y: 50, w: 200, h: 300 };
         let activeHandle = null, resultBlob = null;
+        let isCropMode = false;
         let isDragging = false, startPointer = {x:0, y:0}, startBox = {}, holdTimer = null, isMagnifying = false;
 
         // 1. 啟動相機
@@ -142,11 +148,7 @@
                     audio: false 
                 });
                 video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    imageWidth = video.videoWidth;
-                    imageHeight = video.videoHeight;
-                    video.play();
-                };
+                video.onloadedmetadata = () => { video.play(); };
             } catch (err) {
                 alert("相機啟動失敗，請確認設備或權限設定。");
             }
@@ -156,18 +158,66 @@
 
         // 2. 拍照並進入裁切模式
         document.getElementById('btn-do-capture').addEventListener('click', () => {
+            // 🌟 修正：擷取當下的正確寬高 (應對手機轉向)
+            imageWidth = video.videoWidth;
+            imageHeight = video.videoHeight;
+            
             snapshotCanvas.width = imageWidth;
             snapshotCanvas.height = imageHeight;
             snapCtx.drawImage(video, 0, 0, imageWidth, imageHeight);
             
             // 介面切換
+            isCropMode = true;
             video.style.display = 'none';
             snapshotCanvas.style.display = 'block';
             overlayCanvas.style.display = 'block';
             barCamera.style.display = 'none';
             barCrop.style.display = 'flex';
 
-            // 初始化裁切框
+            initCropBox();
+        });
+
+        // 重拍
+        document.getElementById('btn-retake').addEventListener('click', () => {
+            isCropMode = false;
+            snapshotCanvas.style.display = 'none';
+            overlayCanvas.style.display = 'none';
+            video.style.display = 'block';
+            barCamera.style.display = 'flex';
+            barCrop.style.display = 'none';
+        });
+
+        // 🌟 核心修正：監聽視窗轉向，重新計算比例與座標
+        window.addEventListener('resize', () => {
+            if (!isCropMode || imageWidth === 0) return;
+
+            const rect = workspace.getBoundingClientRect();
+            overlayCanvas.width = rect.width;
+            overlayCanvas.height = rect.height;
+
+            // 記錄轉向前，裁切框在「原圖」上的相對位置
+            const origX = (cropBox.x - offsetX) / displayScale;
+            const origY = (cropBox.y - offsetY) / displayScale;
+            const origW = cropBox.w / displayScale;
+            const origH = cropBox.h / displayScale;
+
+            // 重新計算新比例
+            displayScale = Math.min(rect.width / imageWidth, rect.height / imageHeight);
+            const dW = imageWidth * displayScale;
+            const dH = imageHeight * displayScale;
+            offsetX = (rect.width - dW) / 2;
+            offsetY = (rect.height - dH) / 2;
+
+            // 把裁切框完美還原到新比例的位置上
+            cropBox.x = offsetX + (origX * displayScale);
+            cropBox.y = offsetY + (origY * displayScale);
+            cropBox.w = origW * displayScale;
+            cropBox.h = origH * displayScale;
+
+            drawOverlay();
+        });
+
+        function initCropBox() {
             const rect = workspace.getBoundingClientRect();
             overlayCanvas.width = rect.width;
             overlayCanvas.height = rect.height;
@@ -184,16 +234,7 @@
             cropBox.y = offsetY + (dH * 0.1);
 
             drawOverlay();
-        });
-
-        // 重拍
-        document.getElementById('btn-retake').addEventListener('click', () => {
-            snapshotCanvas.style.display = 'none';
-            overlayCanvas.style.display = 'none';
-            video.style.display = 'block';
-            barCamera.style.display = 'flex';
-            barCrop.style.display = 'none';
-        });
+        }
 
         // 3. 裁切與放大鏡邏輯
         function drawOverlay() {
@@ -219,6 +260,7 @@
         }
 
         overlayCanvas.addEventListener('pointerdown', (e) => {
+            if(!isCropMode) return;
             const rect = overlayCanvas.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
             startPointer = { x: px, y: py }; startBox = { ...cropBox };
             const margin = 35;
@@ -276,7 +318,7 @@
             }, 'image/jpeg', 0.95);
         });
 
-        // 5. 唯一按鈕：回主畫面 (改用 window.opener.postMessage)
+        // 5. 回主畫面
         document.getElementById('btn-send-main').addEventListener('click', () => {
             const fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
             const reader = new FileReader();
@@ -284,14 +326,13 @@
                 const d = new Date();
                 const fullFileName = `${fileName}_${d.getHours()}${d.getMinutes()}${d.getSeconds()}.jpg`;
                 
-                // 透過 window.opener 直接傳送，無懼 file:// 安全限制
                 if (window.opener) { 
                     window.opener.postMessage({ type: 'ADD_IMAGE', data: reader.result, name: fullFileName }, '*');
-                    window.opener.focus(); // 喚醒主畫面
+                    window.opener.focus();
                 } else {
                     alert('找不到主畫面，無法加入列表。');
                 }
-                window.close(); // 瞬間關閉裁切視窗
+                window.close();
             };
             reader.readAsDataURL(resultBlob);
         });
