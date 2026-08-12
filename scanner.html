@@ -18,6 +18,7 @@
             height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
         }
 
+        /* --- 工作區塊 (影片/畫布) --- */
         .workspace {
             flex: 1; min-height: 0; position: relative; display: flex; justify-content: center; align-items: center; 
             overflow: hidden; width: 100%;
@@ -33,11 +34,13 @@
             display: none; z-index: 100; pointer-events: none; overflow: hidden;
         }
         #mag-canvas { width: 100%; height: 100%; }
+        /* 放大鏡正中央的精準十字星 */
         #magnifier::after {
             content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px;
             transform: translate(-50%, -50%); background: rgba(212, 140, 140, 0.8); border-radius: 50%;
         }
 
+        /* --- 底部控制列 --- */
         .bottom-bar {
             flex-shrink: 0; background: var(--surface); padding: 16px 24px; 
             padding-bottom: max(16px, env(safe-area-inset-bottom));
@@ -60,18 +63,37 @@
         .btn-action.secondary { background-color: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-light); }
         .btn-action.secondary:hover { background-color: #DCE4E0; }
 
+        /* --- 儲存面板與預覽區 --- */
         .save-panel {
             display: none; flex-direction: column; align-items: center; justify-content: center;
-            width: 100%; height: 100%; background: var(--surface); padding: 20px; gap: 20px;
+            width: 100%; height: 100%; background: var(--surface); padding: 15px; gap: 12px;
         }
-        .save-panel h3 { font-size: 1.2rem; color: var(--text-main); margin-bottom: 10px;}
-        .input-group { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 350px; }
+        
+        /* 🌟 新增：裁切後的預覽圖片區塊，支援點擊縮放滑動 */
+        .preview-wrapper {
+            flex-grow: 1; width: 100%; max-width: 500px; border: 1px solid var(--border-light);
+            border-radius: var(--radius-md); background: var(--bg-color); overflow: auto;
+            display: flex; justify-content: center; align-items: center; position: relative;
+        }
+        #final-scan-img {
+            max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; transition: 0.2s;
+        }
+        #final-scan-img.zoomed {
+            max-width: none; max-height: none; cursor: zoom-out;
+        }
+        .zoom-hint {
+            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: white;
+            font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; pointer-events: none;
+        }
+
+        .save-panel h3 { font-size: 1.1rem; color: var(--text-main); margin-top: 10px; }
+        .input-group { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 400px; }
         .input-group input { 
             flex-grow: 1; padding: 10px 14px; font-size: 1rem; border: 1px solid var(--border-light); 
             border-radius: var(--radius-sm); outline: none; color: var(--text-main);
         }
         .input-group input:focus { border-color: var(--primary); }
-        .action-buttons { display: flex; gap: 12px; width: 100%; max-width: 350px; margin-top: 10px; }
+        .action-buttons { display: flex; gap: 12px; width: 100%; max-width: 400px; margin-top: 5px; }
         .btn-action-full {
             width: 100%; background-color: var(--primary); color: white; border: none; padding: 14px 20px;
             border-radius: var(--radius-sm); font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: 0.2s;
@@ -81,6 +103,7 @@
 </head>
 <body>
 
+    <!-- 工作區：相機與裁切 -->
     <div class="workspace" id="workspace">
         <video id="camera-video" autoplay playsinline></video>
         <canvas id="snapshot-canvas"></canvas>
@@ -88,23 +111,31 @@
         <div id="magnifier"><canvas id="mag-canvas" width="130" height="130"></canvas></div>
     </div>
 
+    <!-- 底部控制列：拍照 -->
     <div class="bottom-bar" id="bar-camera">
         <button class="btn-capture-round" id="btn-do-capture" title="拍照"></button>
     </div>
 
+    <!-- 底部控制列：裁切確認 -->
     <div class="bottom-bar" id="bar-crop" style="display: none;">
         <button class="btn-action secondary" id="btn-retake">✕ 重拍</button>
         <button class="btn-action" id="btn-confirm-crop">✂️ 確定裁切</button>
     </div>
 
+    <!-- 儲存面板 (加入預覽圖) -->
     <div class="save-panel" id="save-panel">
+        <div class="preview-wrapper">
+            <span class="zoom-hint">點擊放大預覽邊界</span>
+            <img id="final-scan-img" title="點擊放大/縮小" />
+        </div>
+        
         <h3>📄 設定檔案名稱</h3>
         <div class="input-group">
-            <label style="font-weight:600; color:var(--text-main);">檔名：</label>
             <input type="text" id="file-name-input">
         </div>
         <div class="action-buttons">
-            <button class="btn-action-full" id="btn-send-main">📥 確認加入列表 (回主畫面)</button>
+            <button class="btn-action secondary" id="btn-back-crop" style="flex:0.5;">↩ 返回</button>
+            <button class="btn-action-full" id="btn-send-main" style="flex:1.5;">📥 確認加入列表</button>
         </div>
     </div>
 
@@ -120,6 +151,7 @@
         const barCamera = document.getElementById('bar-camera');
         const barCrop = document.getElementById('bar-crop');
         const savePanel = document.getElementById('save-panel');
+        const finalImg = document.getElementById('final-scan-img');
 
         let stream = null;
         let imageWidth = 0, imageHeight = 0;
@@ -212,21 +244,22 @@
             corners.forEach(p => { overlayCtx.beginPath(); overlayCtx.arc(p.x, p.y, 14, 0, Math.PI * 2); overlayCtx.fill(); overlayCtx.stroke(); });
         }
 
-        function updateMagnifier(px, py) {
-            document.getElementById('magnifier').style.left = `${px - 65}px`; document.getElementById('magnifier').style.top = `${py - 150}px`;
+        // 🌟 核心修正：強制放大鏡對準真實的邊角座標 (targetX, targetY)，而非手指座標 (px, py)
+        function updateMagnifier(px, py, targetX, targetY) {
+            document.getElementById('magnifier').style.left = `${px - 65}px`; 
+            document.getElementById('magnifier').style.top = `${py - 150}px`;
             
-            // 🌟 核心修正：將 CSS 畫面大小反推回原始圖片真正的像素大小，消除解析度落差
-            const rX = (px - offsetX) / displayScale;
-            const rY = (py - offsetY) / displayScale;
+            // 使用真正的裁切角座標來換算，徹底消滅手指偏移誤差！
+            const rX = (targetX - offsetX) / displayScale;
+            const rY = (targetY - offsetY) / displayScale;
             
-            // 我們想在畫面上抓取約 60px 寬度的真實內容來放大，換算回真實圖片長度
             const sourceSize = 60 / displayScale; 
 
             magCtx.clearRect(0, 0, 130, 130);
             magCtx.drawImage(
                 snapshotCanvas, 
-                rX - (sourceSize / 2), rY - (sourceSize / 2), sourceSize, sourceSize, // 原始圖片的精確擷取區塊
-                0, 0, 130, 130 // 畫到放大鏡畫布上
+                rX - (sourceSize / 2), rY - (sourceSize / 2), sourceSize, sourceSize, 
+                0, 0, 130, 130
             );
         }
 
@@ -234,7 +267,7 @@
             if(!isCropMode) return;
             const rect = overlayCanvas.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
             startPointer = { x: px, y: py }; startBox = { ...cropBox };
-            const margin = 35;
+            const margin = 40; // 觸控熱區放寬
             if (Math.abs(px - cropBox.x) < margin && Math.abs(py - cropBox.y) < margin) activeHandle = 'tl';
             else if (Math.abs(px - (cropBox.x + cropBox.w)) < margin && Math.abs(py - cropBox.y) < margin) activeHandle = 'tr';
             else if (Math.abs(px - cropBox.x) < margin && Math.abs(py - (cropBox.y + cropBox.h)) < margin) activeHandle = 'bl';
@@ -244,7 +277,18 @@
 
             if (activeHandle) {
                 isDragging = true;
-                holdTimer = setTimeout(() => { if (isDragging) { isMagnifying = true; document.getElementById('magnifier').style.display = 'block'; updateMagnifier(px, py); } }, 500);
+                holdTimer = setTimeout(() => { 
+                    if (isDragging) { 
+                        isMagnifying = true; document.getElementById('magnifier').style.display = 'block'; 
+                        // 初次按下也要給予精確角點
+                        let tX = px, tY = py;
+                        if(activeHandle === 'tl'){ tX = cropBox.x; tY = cropBox.y; }
+                        else if(activeHandle === 'tr'){ tX = cropBox.x + cropBox.w; tY = cropBox.y; }
+                        else if(activeHandle === 'bl'){ tX = cropBox.x; tY = cropBox.y + cropBox.h; }
+                        else if(activeHandle === 'br'){ tX = cropBox.x + cropBox.w; tY = cropBox.y + cropBox.h; }
+                        updateMagnifier(px, py, tX, tY); 
+                    } 
+                }, 400);
             }
         });
 
@@ -252,17 +296,23 @@
             if (!isDragging) return;
             const px = e.clientX - overlayCanvas.getBoundingClientRect().left, py = e.clientY - overlayCanvas.getBoundingClientRect().top;
             const dx = px - startPointer.x, dy = py - startPointer.y;
+            
+            let targetX = px, targetY = py;
+
             if (activeHandle === 'move') { cropBox.x = startBox.x + dx; cropBox.y = startBox.y + dy; }
-            else if (activeHandle === 'tl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; }
-            else if (activeHandle === 'tr') { cropBox.w = startBox.w + dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; }
-            else if (activeHandle === 'bl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.h = startBox.h + dy; }
-            else if (activeHandle === 'br') { cropBox.w = startBox.w + dx; cropBox.h = startBox.h + dy; }
+            else if (activeHandle === 'tl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; targetX = cropBox.x; targetY = cropBox.y; }
+            else if (activeHandle === 'tr') { cropBox.w = startBox.w + dx; cropBox.y = startBox.y + dy; cropBox.h = startBox.h - dy; targetX = cropBox.x + cropBox.w; targetY = cropBox.y;}
+            else if (activeHandle === 'bl') { cropBox.x = startBox.x + dx; cropBox.w = startBox.w - dx; cropBox.h = startBox.h + dy; targetX = cropBox.x; targetY = cropBox.y + cropBox.h;}
+            else if (activeHandle === 'br') { cropBox.w = startBox.w + dx; cropBox.h = startBox.h + dy; targetX = cropBox.x + cropBox.w; targetY = cropBox.y + cropBox.h;}
+            
             if (cropBox.w < 50) cropBox.w = 50; if (cropBox.h < 50) cropBox.h = 50;
-            drawOverlay(); if (isMagnifying) updateMagnifier(px, py);
+            drawOverlay(); 
+            if (isMagnifying) updateMagnifier(px, py, targetX, targetY); // 傳入精確點
         });
 
         window.addEventListener('pointerup', () => { isDragging = false; activeHandle = null; clearTimeout(holdTimer); isMagnifying = false; document.getElementById('magnifier').style.display = 'none'; });
 
+        // 4. 確定裁切 -> 進入儲存與預覽面板
         document.getElementById('btn-confirm-crop').addEventListener('click', () => {
             if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -278,22 +328,43 @@
             finalCanvas.toBlob(blob => { 
                 resultBlob = blob; 
                 
+                // 顯示預覽圖片
+                const url = URL.createObjectURL(blob);
+                finalImg.src = url;
+                finalImg.classList.remove('zoomed');
+
                 document.body.style.backgroundColor = "var(--surface)";
                 workspace.style.display = 'none';
                 barCrop.style.display = 'none';
                 savePanel.style.display = 'flex';
 
+                // 🌟 預設檔名：20260812_
                 const d = new Date();
-                document.getElementById('file-name-input').value = `相機掃描_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+                document.getElementById('file-name-input').value = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_`;
             }, 'image/jpeg', 0.95);
         });
 
+        // 預覽圖片的縮放互動
+        finalImg.addEventListener('click', () => {
+            finalImg.classList.toggle('zoomed');
+        });
+
+        // 返回修改裁切
+        document.getElementById('btn-back-crop').addEventListener('click', () => {
+            document.body.style.backgroundColor = "var(--bg-color)";
+            savePanel.style.display = 'none';
+            workspace.style.display = 'flex';
+            barCrop.style.display = 'flex';
+            // 重新恢復視訊串流
+            startCamera(); 
+        });
+
+        // 5. 唯一按鈕：回主畫面
         document.getElementById('btn-send-main').addEventListener('click', () => {
-            const fileName = document.getElementById('file-name-input').value.trim() || '相機掃描';
+            const fileName = document.getElementById('file-name-input').value.trim() || '未命名';
             const reader = new FileReader();
             reader.onloadend = () => {
-                const d = new Date();
-                const fullFileName = `${fileName}_${d.getHours()}${d.getMinutes()}${d.getSeconds()}.jpg`;
+                const fullFileName = `${fileName}.jpg`;
                 
                 if (window.opener) { 
                     window.opener.postMessage({ type: 'ADD_IMAGE', data: reader.result, name: fullFileName }, '*');
