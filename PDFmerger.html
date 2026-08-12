@@ -190,9 +190,9 @@
         const fileListElement = document.getElementById('file-list');
         const mergeBtn = document.getElementById('merge-btn');
 
-        // 監聽來自 scanner.html 傳遞過來的相機照片
-        const channel = new BroadcastChannel('pdf_merger_channel');
-        channel.onmessage = (event) => {
+        // --- 🌟 修正：接收來自 scanner.html 傳遞過來的相機照片 ---
+        // 透過 message 監聽，完美突破本機 file:// 的通訊限制
+        window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'ADD_IMAGE') {
                 fetch(event.data.data)
                     .then(res => res.blob())
@@ -200,9 +200,11 @@
                         const file = new File([blob], event.data.name, { type: 'image/jpeg' });
                         files.push(file);
                         renderFileList();
+                        updateStatus('✅ 已成功接收相機掃描影像！', true);
+                        setTimeout(() => updateStatus('', false), 3000);
                     });
             }
-        };
+        });
 
         // UI 事件綁定
         document.getElementById('drop-zone').addEventListener('click', () => document.getElementById('file-input').click());
@@ -218,7 +220,7 @@
             const height = 750;
             const left = (screen.width - width) / 2;
             const top = (screen.height - height) / 2;
-            window.open('https://chuanhsiufu-neuro.github.io/Tool/scanner.html', 'CameraScanner', `width=${width},height=${height},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=no`);
+            window.open('scanner.html', 'CameraScanner', `width=${width},height=${height},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=no`);
         });
 
         function extractDateValue(filename) {
