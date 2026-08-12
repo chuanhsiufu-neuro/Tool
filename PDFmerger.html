@@ -318,12 +318,10 @@
 
         function moveFile(idx, dir) { const n = idx + dir; if (n >= 0 && n < files.length) { const t = files[idx]; files[idx] = files[n]; files[n] = t; renderFileList(); } }
 
-        // 🌟 終極黑魔法：自建微型 PDF 閱讀器，突破手機 iframe 無法滾動的限制
         async function renderPdfToContainer(fileOrBlob, container) {
             container.innerHTML = '<div style="text-align:center; padding: 20px; width: 100%; color: var(--text-muted); font-weight: 600;">🔄 正在載入文件頁面，請稍候...</div>';
             try {
                 const arrayBuffer = await fileOrBlob.arrayBuffer();
-                // 掛載 CMap 確保中文也能完美顯示
                 const pdfDoc = await pdfjsLib.getDocument({ 
                     data: arrayBuffer,
                     cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
@@ -339,10 +337,9 @@
                 scrollContainer.style.alignItems = 'center';
                 scrollContainer.style.padding = '10px 0';
                 
-                // 把 PDF 每一頁都畫成高畫質圖片，垂直排列
                 for (let p = 1; p <= pdfDoc.numPages; p++) {
                     const page = await pdfDoc.getPage(p);
-                    const viewport = page.getViewport({ scale: 1.5 }); // 放大解析度確保手機上看起來清晰
+                    const viewport = page.getViewport({ scale: 1.5 }); 
                     
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
@@ -452,7 +449,6 @@
             }
         });
 
-        // --- 🌟 點擊合併後的「預覽檔案」，使用自建 PDF 閱讀器 ---
         document.getElementById('btn-show-preview').addEventListener('click', () => {
             if (!finalMergedBlob) return;
             document.getElementById('preview-title').textContent = `成果：${finalDefaultName}`;
@@ -461,10 +457,15 @@
             showModal(); 
         });
 
+        // 🌟 點擊「傳送/儲存」：針對裝置自動分流
         document.getElementById('btn-trigger-share').addEventListener('click', async () => {
             if (!finalMergedPdfFile) return;
 
-            if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
+            // 判斷是否為手機或平板裝置
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            // 如果是手機版，嘗試呼叫原生分享選單
+            if (isMobile && navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
                 try {
                     await navigator.share({
                         files: [finalMergedPdfFile],
@@ -475,6 +476,7 @@
                     console.log('分享取消', error);
                 }
             } else {
+                // 如果是桌機版 (或不支援分享的手機)，強制使用「另存新檔/下載」模式
                 try {
                     if (window.showSaveFilePicker) {
                         const fileHandle = await window.showSaveFilePicker({ 
@@ -497,7 +499,7 @@
                         a.href = u; a.download = finalDefaultName;
                         document.body.appendChild(a); a.click(); document.body.removeChild(a);
                         URL.revokeObjectURL(u);
-                        updateStatus('📥 設備不支援系統分享選單，已為您自動下載檔案！', true);
+                        updateStatus('📥 已為您自動下載檔案！', true);
                         setTimeout(()=>updateStatus('',false), 3000);
                     }
                 }
