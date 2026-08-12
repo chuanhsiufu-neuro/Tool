@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>智慧文件處理中心</title>
     
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -46,7 +46,6 @@
         .drop-hint { font-size: 0.85rem; color: var(--text-muted); }
         #file-input { display: none; }
 
-        /* 快捷按鈕區塊 */
         .quick-actions { display: flex; gap: 12px; justify-content: center; margin-top: -5px; }
         .quick-btn {
             flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -57,7 +56,6 @@
         .quick-btn:hover { border-color: var(--primary); background-color: #E8EFEA; color: var(--primary); }
         .quick-btn svg { width: 20px; height: 20px; color: var(--primary); }
 
-        /* 快捷鍵提示文字 */
         .shortcut-hint {
             text-align: center; font-size: 0.85rem; color: var(--text-muted); 
             background: #E8EFEA; padding: 10px; border-radius: var(--radius-sm); border: 1px dashed var(--primary);
@@ -101,14 +99,27 @@
         #status-container.active { display: block; }
 
         .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
             background: rgba(0, 0, 0, 0.85); z-index: 1000; display: none; flex-direction: column;
         }
         .modal-overlay.active { display: flex; }
         .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; }
         .btn-close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; }
-        .preview-content { flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: center; }
-        .preview-content iframe, .preview-content img { width: 100%; height: 100%; object-fit: contain; background: white; border-radius: 8px; }
+        
+        /* 🌟 預覽圖片點擊縮放樣式 */
+        .preview-content { 
+            flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: center; 
+            overflow: auto; /* 允許大圖片滑動 */
+        }
+        .preview-content iframe { width: 100%; height: 100%; background: white; border-radius: 8px; }
+        .preview-content img { 
+            max-width: 100%; max-height: 100%; object-fit: contain; background: white; 
+            border-radius: 8px; cursor: zoom-in; transition: 0.2s;
+        }
+        /* 被點擊放大後的圖片樣式 */
+        .preview-content img.zoomed {
+            max-width: none; max-height: none; cursor: zoom-out; 
+        }
     </style>
 </head>
 <body>
@@ -122,7 +133,6 @@
         </div>
         <input type="file" id="file-input" multiple accept="application/pdf, image/jpeg, image/png">
         
-        <!-- 相機與螢幕截圖按鈕 -->
         <div class="quick-actions">
             <button class="quick-btn" id="btn-open-camera">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
@@ -134,7 +144,6 @@
             </button>
         </div>
 
-        <!-- 小字說明區塊 -->
         <div class="shortcut-hint">
             💡 <b>螢幕截取貼上教學：</b><br>
             按下 <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> 截取畫面後，在此網頁直接按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 即可貼上加入！
@@ -161,7 +170,6 @@
     </div>
 
     <script>
-        // --- 🌟 監聽 Ctrl+V 貼上剪貼簿圖片 ---
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             let added = false;
@@ -190,8 +198,6 @@
         const fileListElement = document.getElementById('file-list');
         const mergeBtn = document.getElementById('merge-btn');
 
-        // --- 🌟 修正：接收來自 scanner.html 傳遞過來的相機照片 ---
-        // 透過 message 監聽，完美突破本機 file:// 的通訊限制
         window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'ADD_IMAGE') {
                 fetch(event.data.data)
@@ -206,7 +212,6 @@
             }
         });
 
-        // UI 事件綁定
         document.getElementById('drop-zone').addEventListener('click', () => document.getElementById('file-input').click());
         document.getElementById('file-input').addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
 
@@ -220,7 +225,7 @@
             const height = 750;
             const left = (screen.width - width) / 2;
             const top = (screen.height - height) / 2;
-            window.open('https://chuanhsiufu-neuro.github.io/Tool/scanner.html', 'CameraScanner', `width=${width},height=${height},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=no`);
+            window.open('scanner.html', 'CameraScanner', `width=${width},height=${height},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=no`);
         });
 
         function extractDateValue(filename) {
@@ -272,10 +277,15 @@
             const contentDiv = document.getElementById('preview-content'); contentDiv.innerHTML = ''; 
             if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
             previewObjectURL = URL.createObjectURL(file);
+            
             if (file.type === 'application/pdf') {
                 const iframe = document.createElement('iframe'); iframe.src = previewObjectURL; contentDiv.appendChild(iframe);
             } else {
-                const img = document.createElement('img'); img.src = previewObjectURL; contentDiv.appendChild(img);
+                const img = document.createElement('img'); 
+                img.src = previewObjectURL; 
+                // 🌟 新增：點擊圖片即可放大縮小看細節
+                img.onclick = () => { img.classList.toggle('zoomed'); };
+                contentDiv.appendChild(img);
             }
             document.getElementById('preview-modal').classList.add('active');
         }
@@ -284,7 +294,6 @@
             document.getElementById('preview-content').innerHTML = '';
         });
 
-        // --- 最終合併與儲存 ---
         function updateStatus(msg, active=true) { const c = document.getElementById('status-container'); c.textContent = msg; active ? c.classList.add('active') : c.classList.remove('active'); }
         
         mergeBtn.addEventListener('click', async () => {
