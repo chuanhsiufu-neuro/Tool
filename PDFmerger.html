@@ -89,15 +89,31 @@
         }
         .settings-group input { flex-grow: 1; padding: 8px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); outline: none; }
 
+        /* 主按鈕樣式 */
         .btn-main {
             width: 100%; padding: 16px; font-size: 1.1rem; font-weight: 600; color: white;
-            background-color: var(--primary); border: none; border-radius: var(--radius-md); cursor: pointer;
+            background-color: var(--primary); border: none; border-radius: var(--radius-md); cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
         }
         .btn-main:hover:not(:disabled) { background-color: var(--primary-hover); }
         .btn-main:disabled { background-color: #BCC9C1; cursor: not-allowed; }
-        #status-container { display: none; padding: 16px; border-radius: var(--radius-md); background: #E8EFEA; text-align: center; font-weight: 500; border: 1px solid var(--primary); color: var(--primary);}
+
+        /* 🌟 合併完成後的雙按鈕面板 */
+        .post-merge-panel {
+            display: none; flex-direction: row; gap: 12px; width: 100%; animation: fadeIn 0.3s ease;
+        }
+        .btn-half {
+            flex: 1; padding: 16px; font-size: 1.05rem; font-weight: 600; color: white;
+            background-color: var(--primary); border: none; border-radius: var(--radius-md); cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-half:hover { background-color: var(--primary-hover); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+        #status-container { display: none; padding: 16px; border-radius: var(--radius-md); background: #E8EFEA; text-align: center; font-weight: 600; border: 1px dashed var(--primary); color: var(--primary);}
         #status-container.active { display: block; }
 
+        /* Modal 共用 */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
             background: rgba(0, 0, 0, 0.85); z-index: 1000; display: none; flex-direction: column;
@@ -105,15 +121,6 @@
         .modal-overlay.active { display: flex; }
         
         .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; }
-        .header-actions { display: flex; align-items: center; gap: 12px; }
-        
-        /* 🌟 分享按鈕樣式 (永遠顯示) */
-        .btn-share {
-            background-color: #3498DB; color: white; border: none; padding: 8px 14px;
-            border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: 0.2s;
-            display: none; 
-        }
-        .btn-share:hover { background-color: #2980B9; }
         .btn-close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
         
         .preview-content { 
@@ -161,7 +168,15 @@
             <input type="text" id="output-filename" value="合併完成文件">
         </div>
         
-        <button class="btn-main" id="merge-btn" disabled>產生 PDF (自動儲存與預覽)</button>
+        <!-- 原始的合併按鈕 -->
+        <button class="btn-main" id="merge-btn" disabled>⚙️ 開始合併 PDF (背景處理)</button>
+        
+        <!-- 🌟 合併完成後自動切換顯示的雙按鈕 -->
+        <div class="post-merge-panel" id="post-merge-panel">
+            <button class="btn-half" id="btn-show-preview">👁️ 預覽檔案</button>
+            <button class="btn-half" id="btn-trigger-share">📤 傳送 / 儲存</button>
+        </div>
+        
         <div id="status-container"></div>
     </div>
 
@@ -169,23 +184,18 @@
     <div class="modal-overlay" id="preview-modal">
         <div class="preview-header">
             <h3 id="preview-title">檔案預覽</h3>
-            <div class="header-actions">
-                <!-- 🌟 傳送/下載按鈕 -->
-                <button class="btn-share" id="btn-share-pdf">📤 傳送 / 儲存</button>
-                <button class="btn-close-modal" id="btn-close-preview">✕</button>
-            </div>
+            <button class="btn-close-modal" id="btn-close-preview">✕</button>
         </div>
         <div class="preview-content" id="preview-content"></div>
     </div>
 
     <script>
-        // --- 🌟 攔截「手機返回鍵」的黑魔法 (History API) ---
+        // --- 攔截「手機返回鍵」的黑魔法 (History API) ---
         let isModalOpen = false;
 
         function showModal() {
             document.getElementById('preview-modal').classList.add('active');
             isModalOpen = true;
-            // 偷偷推入一個假的歷史紀錄
             history.pushState({ modal: 'open' }, '');
         }
 
@@ -195,21 +205,23 @@
             isModalOpen = false;
         }
 
-        // 監聽手機實體返回鍵或瀏覽器的上一頁
         window.addEventListener('popstate', (e) => {
-            if (isModalOpen) {
-                closeModal(); // 只關閉視窗，不離開網頁！
-            }
+            if (isModalOpen) { closeModal(); }
         });
 
-        // 如果是手動按叉叉關閉，我們要幫瀏覽器「退回」那個假的歷史紀錄，保持乾淨
         document.getElementById('btn-close-preview').addEventListener('click', () => {
-            if (isModalOpen) {
-                history.back(); // 觸發 popstate 來關閉
-            }
+            if (isModalOpen) { history.back(); }
         });
 
         // ----------------------------------------------------
+
+        // 🌟 重置合併按鈕狀態 (當使用者新增、刪除或排序檔案時觸發)
+        function resetMergeUI() {
+            document.getElementById('merge-btn').style.display = 'flex';
+            document.getElementById('post-merge-panel').style.display = 'none';
+            document.getElementById('merge-btn').disabled = files.length === 0;
+            updateStatus('', false);
+        }
 
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -235,12 +247,16 @@
             }
         });
 
-        let files = []; let previewObjectURL = null;
+        let files = []; 
+        let previewObjectURL = null;
+        
+        // 存放合併後的記憶體檔案，供預覽和下載使用
+        let finalMergedBlob = null; 
         let finalMergedPdfFile = null; 
+        let finalDefaultName = '';
         
         const fileListElement = document.getElementById('file-list');
         const mergeBtn = document.getElementById('merge-btn');
-        const btnSharePdf = document.getElementById('btn-share-pdf');
 
         window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'ADD_IMAGE') {
@@ -303,15 +319,15 @@
                 infoDiv.append(typeBadge, nameSpan);
                 
                 const controls = document.createElement('div'); controls.className = 'controls';
-                const upBtn = document.createElement('button'); upBtn.innerHTML = '▲'; upBtn.onclick = () => moveFile(index, -1); upBtn.disabled = index === 0;
-                const downBtn = document.createElement('button'); downBtn.innerHTML = '▼'; downBtn.onclick = () => moveFile(index, 1); downBtn.disabled = index === files.length - 1;
+                const upBtn = document.createElement('button'); upBtn.innerHTML = '▲'; upBtn.onclick = () => { moveFile(index, -1); }; upBtn.disabled = index === 0;
+                const downBtn = document.createElement('button'); downBtn.innerHTML = '▼'; downBtn.onclick = () => { moveFile(index, 1); }; downBtn.disabled = index === files.length - 1;
                 const previewBtn = document.createElement('button'); previewBtn.innerHTML = '👁️'; previewBtn.className = 'btn-preview'; previewBtn.onclick = () => openPreview(index);
                 const removeBtn = document.createElement('button'); removeBtn.innerHTML = '✕'; removeBtn.className = 'btn-remove'; removeBtn.onclick = () => { files.splice(index, 1); renderFileList(); };
                 
                 controls.append(upBtn, downBtn, previewBtn, removeBtn);
                 li.append(infoDiv, controls); fileListElement.appendChild(li);
             });
-            mergeBtn.disabled = files.length === 0;
+            resetMergeUI(); // 檔案變動時，重置為開始合併按鈕
         }
 
         function moveFile(idx, dir) { const n = idx + dir; if (n >= 0 && n < files.length) { const t = files[idx]; files[idx] = files[n]; files[n] = t; renderFileList(); } }
@@ -321,9 +337,6 @@
             const contentDiv = document.getElementById('preview-content'); contentDiv.innerHTML = ''; 
             if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
             previewObjectURL = URL.createObjectURL(file);
-            
-            // 單一檔案預覽時不顯示合併分享按鈕
-            btnSharePdf.style.display = 'none'; 
 
             if (file.type === 'application/pdf') {
                 const iframe = document.createElement('iframe'); iframe.src = previewObjectURL; contentDiv.appendChild(iframe);
@@ -331,48 +344,19 @@
                 const img = document.createElement('img'); img.src = previewObjectURL; 
                 img.onclick = () => { img.classList.toggle('zoomed'); }; contentDiv.appendChild(img);
             }
-            showModal(); // 🌟 呼叫防跳走的新函數
+            showModal(); 
         }
-
-        // 🌟 分享按鈕事件：若手機支援就分享檔案，不支援(如桌機)就觸發下載
-        btnSharePdf.addEventListener('click', async () => {
-            if (!finalMergedPdfFile) return;
-            try {
-                if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
-                    await navigator.share({
-                        files: [finalMergedPdfFile],
-                        title: finalMergedPdfFile.name,
-                        text: '這是我剛處理好的 PDF 文件'
-                    });
-                } else {
-                    // 桌機瀏覽器退回方案：直接觸發下載
-                    const u = URL.createObjectURL(finalMergedPdfFile);
-                    const a = document.createElement('a');
-                    a.href = u; a.download = finalMergedPdfFile.name;
-                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                    URL.revokeObjectURL(u);
-                    updateStatus('📥 設備不支援系統分享選單，已為您自動下載檔案！', true);
-                    setTimeout(()=>updateStatus('',false), 3000);
-                }
-            } catch (error) {
-                console.log('分享取消或不支援', error);
-            }
-        });
 
         function updateStatus(msg, active=true) { const c = document.getElementById('status-container'); c.textContent = msg; active ? c.classList.add('active') : c.classList.remove('active'); }
         
+        // --- 🌟 背景合併運算 ---
         mergeBtn.addEventListener('click', async () => {
-            let defaultName = document.getElementById('output-filename').value.trim() || '合併完成';
-            if (!defaultName.toLowerCase().endsWith('.pdf')) defaultName += '.pdf';
-            
-            // 手機版不需要強制跳出視窗選路徑，直接在背景處理
-            let fileHandle = null;
-            if (window.showSaveFilePicker) {
-                try { fileHandle = await window.showSaveFilePicker({ suggestedName: defaultName, types: [{ description: 'PDF', accept: {'application/pdf': ['.pdf']} }] }); } 
-                catch (err) { if (err.name === 'AbortError') return; }
-            }
+            finalDefaultName = document.getElementById('output-filename').value.trim() || '合併完成';
+            if (!finalDefaultName.toLowerCase().endsWith('.pdf')) finalDefaultName += '.pdf';
 
-            mergeBtn.disabled = true; updateStatus('啟動轉換引擎...');
+            mergeBtn.disabled = true; 
+            updateStatus('🚀 啟動引擎背景處理中...');
+            
             try {
                 const { PDFDocument, PageSizes } = PDFLib; const mergedPdf = await PDFDocument.create(); const [a4W, a4H] = PageSizes.A4;
                 for (let i = 0; i < files.length; i++) {
@@ -398,43 +382,85 @@
                         newP.drawImage(img, {x: (a4W - img.width*fS)/2, y: (a4H - img.height*fS)/2, width: img.width*fS, height: img.height*fS});
                     }
                 }
-                updateStatus('正在寫入檔案...'); const mergedBytes = await mergedPdf.save();
+                updateStatus('正在封裝檔案...'); 
+                const mergedBytes = await mergedPdf.save();
                 
-                // 桌機處理：寫入檔案
-                if (fileHandle) {
-                    const w = await fileHandle.createWritable(); await w.write(mergedBytes); await w.close();
-                } else if (!navigator.canShare) {
-                    // 若不支援 Web Share API，才走傳統下載方式
-                    const u = URL.createObjectURL(new Blob([mergedBytes], {type:'application/pdf'})), a = document.createElement('a');
-                    a.href = u; a.download = defaultName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
-                }
+                // 產生記憶體檔案備用
+                finalMergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
+                finalMergedPdfFile = new File([finalMergedBlob], finalDefaultName, { type: 'application/pdf' });
 
-                // 準備預覽與分享功能
-                const blob = new Blob([mergedBytes], { type: 'application/pdf' });
-                finalMergedPdfFile = new File([blob], defaultName, { type: 'application/pdf' });
+                // UI 切換：隱藏合併按鈕，顯示預覽與儲存按鈕
+                mergeBtn.style.display = 'none';
+                document.getElementById('post-merge-panel').style.display = 'flex';
+                updateStatus('✅ 合併完成！請選擇下一步：', true);
 
-                if (previewObjectURL) URL.revokeObjectURL(previewObjectURL);
-                previewObjectURL = URL.createObjectURL(blob);
-
-                document.getElementById('preview-title').textContent = `成果：${defaultName}`;
-                
-                // 🌟 永遠顯示傳送/儲存按鈕
-                btnSharePdf.style.display = 'block';
-
-                const contentDiv = document.getElementById('preview-content');
-                contentDiv.innerHTML = '';
-                const iframe = document.createElement('iframe');
-                iframe.src = previewObjectURL;
-                contentDiv.appendChild(iframe);
-                showModal(); // 🌟 呼叫防跳走的新函數
-
-                updateStatus('✅ 合併成功！請利用上方按鈕傳送或儲存。'); 
-                setTimeout(()=>updateStatus('',false), 3000);
             } catch (err) { 
                 console.error(err);
                 updateStatus('❌ 發生錯誤，請重試。'); 
-            } finally { 
                 mergeBtn.disabled = false; 
+            }
+        });
+
+        // --- 🌟 點擊「預覽檔案」---
+        document.getElementById('btn-show-preview').addEventListener('click', () => {
+            if (!finalMergedBlob) return;
+            if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
+            previewObjectURL = URL.createObjectURL(finalMergedBlob);
+
+            document.getElementById('preview-title').textContent = `成果：${finalDefaultName}`;
+            
+            const contentDiv = document.getElementById('preview-content');
+            contentDiv.innerHTML = '';
+            const iframe = document.createElement('iframe');
+            iframe.src = previewObjectURL;
+            contentDiv.appendChild(iframe);
+            
+            showModal(); // 開啟預覽
+        });
+
+        // --- 🌟 點擊「傳送 / 儲存」---
+        document.getElementById('btn-trigger-share').addEventListener('click', async () => {
+            if (!finalMergedPdfFile) return;
+
+            // 優先嘗試手機原生分享 API
+            if (navigator.canShare && navigator.canShare({ files: [finalMergedPdfFile] })) {
+                try {
+                    await navigator.share({
+                        files: [finalMergedPdfFile],
+                        title: finalDefaultName,
+                        text: '這是我剛處理好的 PDF 文件'
+                    });
+                } catch (error) {
+                    console.log('分享取消', error);
+                }
+            } else {
+                // 桌機處理：跳出 File Picker 或直接下載
+                try {
+                    if (window.showSaveFilePicker) {
+                        const fileHandle = await window.showSaveFilePicker({ 
+                            suggestedName: finalDefaultName, 
+                            types: [{ description: 'PDF', accept: {'application/pdf': ['.pdf']} }] 
+                        });
+                        const writable = await fileHandle.createWritable();
+                        const arrayBuffer = await finalMergedBlob.arrayBuffer();
+                        await writable.write(arrayBuffer);
+                        await writable.close();
+                        updateStatus('✅ 儲存成功！', true);
+                        setTimeout(()=>updateStatus('',false), 3000);
+                    } else {
+                        throw new Error('Fallback to traditional download');
+                    }
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        const u = URL.createObjectURL(finalMergedBlob);
+                        const a = document.createElement('a');
+                        a.href = u; a.download = finalDefaultName;
+                        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        URL.revokeObjectURL(u);
+                        updateStatus('📥 已為您自動下載檔案！', true);
+                        setTimeout(()=>updateStatus('',false), 3000);
+                    }
+                }
             }
         });
     </script>
