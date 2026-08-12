@@ -117,16 +117,16 @@
         }
         .modal-overlay.active { display: flex; }
         
-        .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; }
+        .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         .btn-close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
         
         .preview-content { 
-            flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: center; overflow: auto; 
+            flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; overflow-x: hidden;
+            background-color: #EAEAEA;
         }
-        .preview-content iframe { width: 100%; height: 100%; background: white; border-radius: 8px; border: none; }
         .preview-content img { 
             max-width: 100%; max-height: 100%; object-fit: contain; background: white; 
-            border-radius: 8px; cursor: zoom-in; transition: 0.2s;
+            border-radius: 8px; cursor: zoom-in; transition: 0.2s; align-self: center;
         }
         .preview-content img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
     </style>
@@ -175,7 +175,6 @@
         <div id="status-container"></div>
     </div>
 
-    <!-- 預覽視窗 Modal -->
     <div class="modal-overlay" id="preview-modal">
         <div class="preview-header">
             <h3 id="preview-title">檔案預覽</h3>
@@ -224,13 +223,11 @@
                     const blob = item.getAsFile();
                     const d = new Date();
                     const fileName = `截取畫面_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${d.getHours()}${d.getMinutes()}${d.getSeconds()}.jpg`;
-                    
                     const newFile = new File([blob], fileName, { type: item.type });
                     files.push(newFile);
                     added = true;
                 }
             }
-            
             if (added) {
                 renderFileList();
                 updateStatus('📋 已成功從剪貼簿貼上影像！', true);
@@ -321,15 +318,61 @@
 
         function moveFile(idx, dir) { const n = idx + dir; if (n >= 0 && n < files.length) { const t = files[idx]; files[idx] = files[n]; files[n] = t; renderFileList(); } }
 
+        // 🌟 終極黑魔法：自建微型 PDF 閱讀器，突破手機 iframe 無法滾動的限制
+        async function renderPdfToContainer(fileOrBlob, container) {
+            container.innerHTML = '<div style="text-align:center; padding: 20px; width: 100%; color: var(--text-muted); font-weight: 600;">🔄 正在載入文件頁面，請稍候...</div>';
+            try {
+                const arrayBuffer = await fileOrBlob.arrayBuffer();
+                // 掛載 CMap 確保中文也能完美顯示
+                const pdfDoc = await pdfjsLib.getDocument({ 
+                    data: arrayBuffer,
+                    cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+                    cMapPacked: true
+                }).promise;
+                
+                container.innerHTML = ''; 
+                const scrollContainer = document.createElement('div');
+                scrollContainer.style.width = '100%';
+                scrollContainer.style.display = 'flex';
+                scrollContainer.style.flexDirection = 'column';
+                scrollContainer.style.gap = '15px';
+                scrollContainer.style.alignItems = 'center';
+                scrollContainer.style.padding = '10px 0';
+                
+                // 把 PDF 每一頁都畫成高畫質圖片，垂直排列
+                for (let p = 1; p <= pdfDoc.numPages; p++) {
+                    const page = await pdfDoc.getPage(p);
+                    const viewport = page.getViewport({ scale: 1.5 }); // 放大解析度確保手機上看起來清晰
+                    
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    canvas.style.maxWidth = '100%'; 
+                    canvas.style.height = 'auto';
+                    canvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                    canvas.style.backgroundColor = 'white';
+                    
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                    scrollContainer.appendChild(canvas);
+                }
+                container.appendChild(scrollContainer);
+            } catch(err) {
+                console.error(err);
+                container.innerHTML = '<div style="text-align:center; padding: 20px; color: red;">❌ 無法載入預覽，請直接下載確認。</div>';
+            }
+        }
+
         function openPreview(index) {
             const file = files[index]; document.getElementById('preview-title').textContent = file.name;
-            const contentDiv = document.getElementById('preview-content'); contentDiv.innerHTML = ''; 
-            if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
-            previewObjectURL = URL.createObjectURL(file);
+            const contentDiv = document.getElementById('preview-content'); 
 
             if (file.type === 'application/pdf') {
-                const iframe = document.createElement('iframe'); iframe.src = previewObjectURL; contentDiv.appendChild(iframe);
+                renderPdfToContainer(file, contentDiv);
             } else {
+                contentDiv.innerHTML = ''; 
+                if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
+                previewObjectURL = URL.createObjectURL(file);
                 const img = document.createElement('img'); img.src = previewObjectURL; 
                 img.onclick = () => { img.classList.toggle('zoomed'); }; contentDiv.appendChild(img);
             }
@@ -338,7 +381,6 @@
 
         function updateStatus(msg, active=true) { const c = document.getElementById('status-container'); c.textContent = msg; active ? c.classList.add('active') : c.classList.remove('active'); }
         
-        // --- 🌟 強化的合併防護裝甲 ---
         mergeBtn.addEventListener('click', async () => {
             finalDefaultName = document.getElementById('output-filename').value.trim() || '合併完成';
             if (!finalDefaultName.toLowerCase().endsWith('.pdf')) finalDefaultName += '.pdf';
@@ -354,12 +396,9 @@
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i]; 
                     
-                    // 🔒 防護罩：用 try-catch 包覆單一檔案處理，壞掉的檔案直接跳過，不中斷整體流程
                     try {
                         const arrBuf = await file.arrayBuffer();
                         if (file.type === 'application/pdf') {
-                            
-                            // 💡 修正亞洲字型：掛載 CMap 確保中文 PDF 不會顯示成全白
                             const pdfDoc = await pdfjsLib.getDocument({ 
                                 data: arrBuf,
                                 cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
@@ -377,15 +416,10 @@
                                 const fS = Math.min(a4W/img.width, a4H/img.height);
                                 newP.drawImage(img, {x: (a4W - img.width*fS)/2, y: (a4H - img.height*fS)/2, width: img.width*fS, height: img.height*fS});
                             }
-                            
-                            // 💡 記憶體管理：處理完立刻釋放，防止崩潰
                             pdfDoc.destroy(); 
-
                         } else {
                             updateStatus(`處理中：圖片 ${i+1}/${files.length}...`);
                             let img;
-                            
-                            // 💡 智能防呆：即使副檔名被亂改，依然能自動嘗試另一種格式強行解析
                             try {
                                 img = file.type === 'image/jpeg' ? await mergedPdf.embedJpg(arrBuf) : await mergedPdf.embedPng(arrBuf);
                             } catch (fallbackErr) {
@@ -398,7 +432,6 @@
                         }
                     } catch (fileErr) {
                         console.error(`檔案 ${file.name} 處理失敗:`, fileErr);
-                        alert(`⚠️ 警告：檔案「${file.name}」格式異常或無法解析，系統已為您自動跳過。`);
                     }
                 }
                 
@@ -419,19 +452,12 @@
             }
         });
 
+        // --- 🌟 點擊合併後的「預覽檔案」，使用自建 PDF 閱讀器 ---
         document.getElementById('btn-show-preview').addEventListener('click', () => {
             if (!finalMergedBlob) return;
-            if (previewObjectURL) URL.revokeObjectURL(previewObjectURL); 
-            previewObjectURL = URL.createObjectURL(finalMergedBlob);
-
             document.getElementById('preview-title').textContent = `成果：${finalDefaultName}`;
-            
             const contentDiv = document.getElementById('preview-content');
-            contentDiv.innerHTML = '';
-            const iframe = document.createElement('iframe');
-            iframe.src = previewObjectURL;
-            contentDiv.appendChild(iframe);
-            
+            renderPdfToContainer(finalMergedBlob, contentDiv);
             showModal(); 
         });
 
