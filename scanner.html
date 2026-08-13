@@ -161,10 +161,15 @@
         let isCropMode = false;
         let isDragging = false, startPointer = {x:0, y:0}, startBox = {}, holdTimer = null, isMagnifying = false;
 
+        // 1. 啟動相機 (🌟 強制要求 4K 超高畫質)
         async function startCamera() {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+                    video: { 
+                        facingMode: 'environment', 
+                        width: { ideal: 4096 }, // 從 1920 改成 4K 級別
+                        height: { ideal: 2160 } // 從 1080 改成 4K 級別
+                    }, 
                     audio: false 
                 });
                 video.srcObject = stream;
