@@ -165,20 +165,38 @@
             <input type="text" id="output-filename" value="合併完成文件">
         </div>
         
-        <button class="btn-main" id="merge-btn" disabled>⚙️ 開始合併 PDF (背景處理)</button>
+        <!-- 原本的 Emoji 按鈕全部換成 SVG 現代圖示 -->
+        <button class="btn-main" id="merge-btn" disabled>
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:20px;height:20px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+            開始合併 PDF (背景處理)
+        </button>
         
         <div class="post-merge-panel" id="post-merge-panel">
-            <button class="btn-half" id="btn-show-preview">👁️ 預覽檔案</button>
-            <button class="btn-half" id="btn-trigger-share">📤 傳送 / 儲存</button>
+            <button class="btn-half" id="btn-show-preview">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:20px;height:20px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                預覽檔案
+            </button>
+            <button class="btn-half" id="btn-trigger-share">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:20px;height:20px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                傳送 / 儲存
+            </button>
         </div>
         
         <div id="status-container"></div>
     </div>
 
+    <!-- 預覽視窗 Modal -->
     <div class="modal-overlay" id="preview-modal">
         <div class="preview-header">
             <h3 id="preview-title">檔案預覽</h3>
-            <button class="btn-close-modal" id="btn-close-preview">✕</button>
+            <div class="header-actions">
+                <!-- 🌟 傳送/下載按鈕也換成現代 SVG -->
+                <button class="btn-share" id="btn-share-pdf" style="display: flex; align-items: center; gap: 6px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:16px;height:16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    傳送 / 儲存
+                </button>
+                <button class="btn-close-modal" id="btn-close-preview">✕</button>
+            </div>
         </div>
         <div class="preview-content" id="preview-content"></div>
     </div>
