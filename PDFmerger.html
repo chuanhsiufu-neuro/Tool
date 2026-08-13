@@ -117,13 +117,40 @@
         }
         .modal-overlay.active { display: flex; }
         
-        .preview-header { padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .btn-close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+        /* 🌟 修正：彈性壓縮標題，強制右側按鈕區絕對不換行 */
+        .preview-header { 
+            padding: 12px 20px; background: #fff; display: flex; justify-content: space-between; align-items: center; 
+            flex-shrink: 0; gap: 10px;
+        }
+        .preview-header h3 {
+            margin: 0; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+        }
+        .header-actions { 
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: nowrap; 
+        }
+        
+        /* 🌟 修正：鎖定統一高度 36px，並使用 display: flex 保持內部圖示對齊 */
+        .btn-share {
+            background-color: #3498DB; color: white; border: none; padding: 0 14px; height: 36px;
+            border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: 0.2s;
+            display: none; /* 預設隱藏，由 JS 控制顯示為 flex */
+            align-items: center; gap: 6px; white-space: nowrap;
+        }
+        .btn-share:hover { background-color: #2980B9; }
+        
+        /* 🌟 把原本的文字 X 換成統一大小的按鈕框 */
+        .btn-close-modal { 
+            background: none; border: none; cursor: pointer; color: var(--text-muted); 
+            display: flex; align-items: center; justify-content: center; 
+            width: 36px; height: 36px; border-radius: var(--radius-sm); transition: 0.2s;
+        }
+        .btn-close-modal:hover { background: var(--bg-color); color: var(--text-main); }
         
         .preview-content { 
             flex-grow: 1; padding: 10px; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; overflow-x: hidden;
             background-color: #EAEAEA;
         }
+        .preview-content iframe { width: 100%; height: 100%; background: white; border-radius: 8px; border: none; }
         .preview-content img { 
             max-width: 100%; max-height: 100%; object-fit: contain; background: white; 
             border-radius: 8px; cursor: zoom-in; transition: 0.2s; align-self: center;
@@ -190,12 +217,13 @@
         <div class="preview-header">
             <h3 id="preview-title">檔案預覽</h3>
             <div class="header-actions">
-                <!-- 🌟 傳送/下載按鈕也換成現代 SVG -->
-                <button class="btn-share" id="btn-share-pdf" style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn-share" id="btn-share-pdf">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:16px;height:16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     傳送 / 儲存
                 </button>
-                <button class="btn-close-modal" id="btn-close-preview">✕</button>
+                <button class="btn-close-modal" id="btn-close-preview" title="關閉">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:22px;height:22px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
         </div>
         <div class="preview-content" id="preview-content"></div>
@@ -382,6 +410,9 @@
             const file = files[index]; document.getElementById('preview-title').textContent = file.name;
             const contentDiv = document.getElementById('preview-content'); 
 
+            // 🌟 加入這行：單獨預覽單一檔案時，不顯示分享按鈕
+            document.getElementById('btn-share-pdf').style.display = 'none';
+
             if (file.type === 'application/pdf') {
                 renderPdfToContainer(file, contentDiv);
             } else {
@@ -401,7 +432,7 @@
             if (!finalDefaultName.toLowerCase().endsWith('.pdf')) finalDefaultName += '.pdf';
 
             mergeBtn.disabled = true; 
-            updateStatus('🚀 啟動引擎背景處理中...');
+            updateStatus('啟動引擎背景處理中...');
             
             try {
                 const { PDFDocument, PageSizes } = PDFLib; 
@@ -458,7 +489,7 @@
 
                 mergeBtn.style.display = 'none';
                 document.getElementById('post-merge-panel').style.display = 'flex';
-                updateStatus('✅ 合併完成！請選擇下一步：', true);
+                updateStatus('合併完成！請選擇下一步：', true);
 
             } catch (err) { 
                 console.error(err);
@@ -471,11 +502,15 @@
             if (!finalMergedBlob) return;
             document.getElementById('preview-title').textContent = `成果：${finalDefaultName}`;
             const contentDiv = document.getElementById('preview-content');
+            
+            // 🌟 加入這行：預覽合併好的 PDF 時，讓分享按鈕以 flex 模式顯示 (確保圖示與文字對齊)
+            document.getElementById('btn-share-pdf').style.display = 'flex';
+
             renderPdfToContainer(finalMergedBlob, contentDiv);
             showModal(); 
-        });
+        })
 
-        // 🌟 點擊「傳送/儲存」：針對裝置自動分流
+        // 點擊「傳送/儲存」：針對裝置自動分流
         document.getElementById('btn-trigger-share').addEventListener('click', async () => {
             if (!finalMergedPdfFile) return;
 
@@ -505,7 +540,7 @@
                         const arrayBuffer = await finalMergedBlob.arrayBuffer();
                         await writable.write(arrayBuffer);
                         await writable.close();
-                        updateStatus('✅ 儲存成功！', true);
+                        updateStatus('儲存成功！', true);
                         setTimeout(()=>updateStatus('',false), 3000);
                     } else {
                         throw new Error('Fallback');
@@ -517,11 +552,16 @@
                         a.href = u; a.download = finalDefaultName;
                         document.body.appendChild(a); a.click(); document.body.removeChild(a);
                         URL.revokeObjectURL(u);
-                        updateStatus('📥 已為您自動下載檔案！', true);
+                        updateStatus('已為您自動下載檔案！', true);
                         setTimeout(()=>updateStatus('',false), 3000);
                     }
                 }
             }
+        });
+
+        // 預覽視窗內右上角分享按鈕的連動邏輯
+        document.getElementById('btn-share-pdf').addEventListener('click', () => {
+            document.getElementById('btn-trigger-share').click();
         });
     </script>
 </body>
